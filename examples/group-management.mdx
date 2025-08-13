@@ -1,0 +1,1101 @@
+---
+title: "Group Management"
+description: "Complete guide to creating and managing WhatsApp groups via API"
+---
+
+## Overview
+
+WhatsApp groups are a powerful way to communicate with multiple people at once. The API provides comprehensive group management capabilities including creating groups, managing participants, configuring settings, and handling group events.
+
+## Creating Groups
+
+### Basic Group Creation
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "My API Test Group",
+    "participants": [
+      "6289685028129",
+      "6289685028130",
+      "6289685028131"
+    ]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    title: 'My API Test Group',
+    participants: [
+      '6289685028129',
+      '6289685028130', 
+      '6289685028131'
+    ]
+  })
+});
+
+const result = await response.json();
+console.log('Group created:', result);
+```
+
+```python Python
+import requests
+
+url = "http://localhost:3000/group"
+payload = {
+    "title": "My API Test Group",
+    "participants": [
+        "6289685028129",
+        "6289685028130",
+        "6289685028131"
+    ]
+}
+
+response = requests.post(url, json=payload)
+result = response.json()
+print("Group created:", result)
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "net/http"
+)
+
+func createGroup() {
+    url := "http://localhost:3000/group"
+    
+    payload := map[string]interface{}{
+        "title": "My API Test Group",
+        "participants": []string{
+            "6289685028129",
+            "6289685028130",
+            "6289685028131",
+        },
+    }
+    
+    jsonData, _ := json.Marshal(payload)
+    
+    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+    if err != nil {
+        fmt.Println("Error:", err)
+        return
+    }
+    defer resp.Body.Close()
+    
+    fmt.Println("Group created successfully!")
+}
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "code": "SUCCESS",
+  "message": "Success create group",
+  "results": {
+    "group_id": "120363347168689807@g.us"
+  }
+}
+```
+
+### Advanced Group Creation
+
+```javascript
+class GroupManager {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
+  }
+  
+  async createGroup(title, participants, options = {}) {
+    try {
+      const payload = {
+        title,
+        participants,
+        ...options
+      };
+      
+      const response = await fetch(`${this.apiUrl}/group`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const result = await response.json();
+      
+      if (result.code === 'SUCCESS') {
+        const groupId = result.results.group_id;
+        
+        // Configure group settings after creation
+        if (options.description) {
+          await this.setGroupDescription(groupId, options.description);
+        }
+        
+        if (options.photo) {
+          await this.setGroupPhoto(groupId, options.photo);
+        }
+        
+        if (options.settings) {
+          await this.configureGroupSettings(groupId, options.settings);
+        }
+        
+        return {
+          groupId,
+          title,
+          participants: participants.length
+        };
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error('Failed to create group:', error);
+      throw error;
+    }
+  }
+  
+  async createGroupWithValidation(title, participants, options = {}) {
+    // Validate participants before creating group
+    const validParticipants = [];
+    
+    for (const phone of participants) {
+      const isValid = await this.validatePhoneNumber(phone);
+      if (isValid) {
+        validParticipants.push(phone);
+      } else {
+        console.warn(`Invalid phone number: ${phone}`);
+      }
+    }
+    
+    if (validParticipants.length < 1) {
+      throw new Error('At least one valid participant is required');
+    }
+    
+    return await this.createGroup(title, validParticipants, options);
+  }
+  
+  async validatePhoneNumber(phone) {
+    try {
+      const response = await fetch(`${this.apiUrl}/user/check?phone=${phone}`);
+      const result = await response.json();
+      return result.code === 'SUCCESS' && result.results.is_on_whatsapp;
+    } catch (error) {
+      console.error(`Failed to validate ${phone}:`, error);
+      return false;
+    }
+  }
+}
+
+// Usage
+const groupManager = new GroupManager('http://localhost:3000');
+
+const newGroup = await groupManager.createGroupWithValidation(
+  'Project Team Alpha',
+  ['6289685028129', '6289685028130', '6289685028131'],
+  {
+    description: 'Project collaboration group for Alpha project',
+    settings: {
+      announce: false,
+      locked: false
+    }
+  }
+);
+```
+
+## Participant Management
+
+### Add Participants
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/participants \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "participants": [
+      "6289685028132",
+      "6289685028133"
+    ]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/participants', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    participants: [
+      '6289685028132',
+      '6289685028133'
+    ]
+  })
+});
+
+const result = await response.json();
+console.log('Participants added:', result);
+```
+</CodeGroup>
+
+### Remove Participants
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/participants/remove \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "participants": [
+      "6289685028132"
+    ]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/participants/remove', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    participants: ['6289685028132']
+  })
+});
+```
+</CodeGroup>
+
+### Promote to Admin
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/participants/promote \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "participants": [
+      "6289685028130"
+    ]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/participants/promote', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    participants: ['6289685028130']
+  })
+});
+```
+</CodeGroup>
+
+### Demote from Admin
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/participants/demote \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "participants": [
+      "6289685028130"
+    ]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/participants/demote', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    participants: ['6289685028130']
+  })
+});
+```
+</CodeGroup>
+
+## Group Settings
+
+### Set Group Name
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/name \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "name": "Updated Group Name"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/name', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    name: 'Updated Group Name'
+  })
+});
+```
+</CodeGroup>
+
+### Set Group Description
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/topic \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "topic": "Welcome to our project group! Please follow these rules:\n1. Be respectful\n2. Stay on topic\n3. No spam"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/topic', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    topic: 'Welcome to our project group! Please follow these rules:\n1. Be respectful\n2. Stay on topic\n3. No spam'
+  })
+});
+```
+</CodeGroup>
+
+### Set Group Photo
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/photo \
+  -F "group_id=120363347168689807@g.us" \
+  -F "photo=@/path/to/group-photo.jpg"
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('group_id', '120363347168689807@g.us');
+formData.append('photo', photoFile);
+
+const response = await fetch('http://localhost:3000/group/photo', {
+  method: 'POST',
+  body: formData
+});
+```
+</CodeGroup>
+
+### Configure Group Permissions
+
+<CodeGroup>
+```bash cURL
+# Lock group (only admins can modify settings)
+curl -X POST http://localhost:3000/group/locked \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "locked": true
+  }'
+
+# Enable announce mode (only admins can send messages)
+curl -X POST http://localhost:3000/group/announce \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "announce": true
+  }'
+```
+
+```javascript JavaScript
+// Lock group settings
+await fetch('http://localhost:3000/group/locked', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    locked: true
+  })
+});
+
+// Enable announce mode
+await fetch('http://localhost:3000/group/announce', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    announce: true
+  })
+});
+```
+</CodeGroup>
+
+## Group Information
+
+### Get Group Info
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/group/info?group_id=120363347168689807@g.us"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/info?group_id=120363347168689807@g.us');
+const groupInfo = await response.json();
+console.log('Group info:', groupInfo);
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "code": "SUCCESS",
+  "message": "Success get group info",
+  "results": {
+    "JID": "120363347168689807@g.us",
+    "OwnerJID": "6288228744537@s.whatsapp.net",
+    "Name": "My API Test Group",
+    "NameSetAt": "2024-01-15T10:30:00Z",
+    "Topic": "Welcome to our group!",
+    "GroupCreated": "2024-01-15T10:30:00Z",
+    "IsLocked": false,
+    "IsAnnounce": false,
+    "Participants": [
+      {
+        "JID": "6288228744537@s.whatsapp.net",
+        "IsAdmin": true,
+        "IsSuperAdmin": true
+      },
+      {
+        "JID": "6289685028129@s.whatsapp.net",
+        "IsAdmin": false,
+        "IsSuperAdmin": false
+      }
+    ]
+  }
+}
+```
+
+### Group Analytics
+
+```javascript
+class GroupAnalytics {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
+  }
+  
+  async getGroupStats(groupId) {
+    try {
+      const groupInfo = await this.getGroupInfo(groupId);
+      const messages = await this.getGroupMessages(groupId, { limit: 100 });
+      
+      const stats = {
+        groupId,
+        name: groupInfo.Name,
+        totalParticipants: groupInfo.Participants.length,
+        adminCount: groupInfo.Participants.filter(p => p.IsAdmin).length,
+        memberCount: groupInfo.Participants.filter(p => !p.IsAdmin).length,
+        isLocked: groupInfo.IsLocked,
+        isAnnounce: groupInfo.IsAnnounce,
+        createdAt: groupInfo.GroupCreated,
+        recentActivity: this.analyzeRecentActivity(messages)
+      };
+      
+      return stats;
+    } catch (error) {
+      console.error('Failed to get group stats:', error);
+      throw error;
+    }
+  }
+  
+  async getGroupInfo(groupId) {
+    const response = await fetch(`${this.apiUrl}/group/info?group_id=${encodeURIComponent(groupId)}`);
+    const result = await response.json();
+    
+    if (result.code === 'SUCCESS') {
+      return result.results;
+    } else {
+      throw new Error(result.message);
+    }
+  }
+  
+  async getGroupMessages(groupId, options = {}) {
+    const params = new URLSearchParams({
+      limit: options.limit || 50,
+      offset: options.offset || 0
+    });
+    
+    const response = await fetch(`${this.apiUrl}/chat/${encodeURIComponent(groupId)}/messages?${params}`);
+    const result = await response.json();
+    
+    if (result.code === 'SUCCESS') {
+      return result.results.data;
+    } else {
+      throw new Error(result.message);
+    }
+  }
+  
+  analyzeRecentActivity(messages) {
+    const now = new Date();
+    const oneDayAgo = new Date(now - 24 * 60 * 60 * 1000);
+    const oneWeekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    
+    const recentMessages = messages.filter(msg => 
+      new Date(msg.timestamp) > oneDayAgo
+    );
+    
+    const weeklyMessages = messages.filter(msg => 
+      new Date(msg.timestamp) > oneWeekAgo
+    );
+    
+    return {
+      messagesLast24h: recentMessages.length,
+      messagesLastWeek: weeklyMessages.length,
+      activeUsersLast24h: new Set(recentMessages.map(msg => msg.sender_jid)).size,
+      activeUsersLastWeek: new Set(weeklyMessages.map(msg => msg.sender_jid)).size
+    };
+  }
+}
+
+// Usage
+const analytics = new GroupAnalytics('http://localhost:3000');
+const stats = await analytics.getGroupStats('120363347168689807@g.us');
+console.log('Group statistics:', stats);
+```
+
+## Group Invitations
+
+### Join Group via Link
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/join-with-link \
+  -H "Content-Type: application/json" \
+  -d '{
+    "link": "https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrSt"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/join-with-link', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    link: 'https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrSt'
+  })
+});
+```
+</CodeGroup>
+
+### Get Group Info from Link
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/group/info-from-link?link=https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrSt"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/info-from-link?link=' + 
+  encodeURIComponent('https://chat.whatsapp.com/AbCdEfGhIjKlMnOpQrSt'));
+const groupInfo = await response.json();
+```
+</CodeGroup>
+
+## Join Requests Management
+
+### Get Pending Join Requests
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/group/participant-requests?group_id=120363347168689807@g.us"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/participant-requests?group_id=120363347168689807@g.us');
+const requests = await response.json();
+console.log('Pending requests:', requests);
+```
+</CodeGroup>
+
+### Approve Join Requests
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/participant-requests/approve \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "participants": ["6281234567890"]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/participant-requests/approve', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    participants: ['6281234567890']
+  })
+});
+```
+</CodeGroup>
+
+### Reject Join Requests
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/participant-requests/reject \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us",
+    "participants": ["6281234567890"]
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/participant-requests/reject', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us',
+    participants: ['6281234567890']
+  })
+});
+```
+</CodeGroup>
+
+## Group Messaging
+
+### Send Message to Group
+
+```javascript
+async function sendGroupMessage(groupId, message, options = {}) {
+  try {
+    const response = await fetch('http://localhost:3000/send/message', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        phone: groupId,
+        message,
+        ...options
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.code === 'SUCCESS') {
+      console.log('Group message sent:', result);
+      return result;
+    } else {
+      throw new Error(result.message);
+    }
+  } catch (error) {
+    console.error('Failed to send group message:', error);
+    throw error;
+  }
+}
+
+// Send welcome message to new group
+await sendGroupMessage(
+  '120363347168689807@g.us',
+  '🎉 Welcome to our project group! Please introduce yourselves and let\'s get started!'
+);
+
+// Send announcement with mention
+await sendGroupMessage(
+  '120363347168689807@g.us',
+  '@everyone Please check the latest project updates in the shared folder.',
+  { is_forwarded: false }
+);
+```
+
+### Group Broadcast
+
+```javascript
+class GroupBroadcaster {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
+  }
+  
+  async broadcastToMultipleGroups(groupIds, message, options = {}) {
+    const results = [];
+    const delay = options.delay || 1000; // 1 second delay between messages
+    
+    for (const groupId of groupIds) {
+      try {
+        const result = await this.sendGroupMessage(groupId, message);
+        results.push({ groupId, success: true, result });
+        
+        // Add delay to avoid rate limiting
+        if (groupIds.indexOf(groupId) < groupIds.length - 1) {
+          await this.sleep(delay);
+        }
+      } catch (error) {
+        console.error(`Failed to send to group ${groupId}:`, error);
+        results.push({ groupId, success: false, error: error.message });
+      }
+    }
+    
+    return results;
+  }
+  
+  async sendGroupMessage(groupId, message) {
+    const response = await fetch(`${this.apiUrl}/send/message`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        phone: groupId,
+        message
+      })
+    });
+    
+    return await response.json();
+  }
+  
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+// Usage
+const broadcaster = new GroupBroadcaster('http://localhost:3000');
+
+const groupIds = [
+  '120363347168689807@g.us',
+  '120363347168689808@g.us',
+  '120363347168689809@g.us'
+];
+
+const results = await broadcaster.broadcastToMultipleGroups(
+  groupIds,
+  '📢 Important announcement: Server maintenance scheduled for tonight at 11 PM.',
+  { delay: 2000 }
+);
+
+console.log('Broadcast results:', results);
+```
+
+## Group Event Handling
+
+### Handle Group Events
+
+```javascript
+function handleGroupEvent(event) {
+  const { type, groupId, participant, data } = event;
+  
+  switch (type) {
+    case 'participant_added':
+      handleParticipantAdded(groupId, participant, data);
+      break;
+    case 'participant_removed':
+      handleParticipantRemoved(groupId, participant, data);
+      break;
+    case 'participant_promoted':
+      handleParticipantPromoted(groupId, participant);
+      break;
+    case 'participant_demoted':
+      handleParticipantDemoted(groupId, participant);
+      break;
+    case 'group_name_changed':
+      handleGroupNameChanged(groupId, data.oldName, data.newName);
+      break;
+    case 'group_description_changed':
+      handleGroupDescriptionChanged(groupId, data.newDescription);
+      break;
+    default:
+      console.log('Unknown group event:', type);
+  }
+}
+
+async function handleParticipantAdded(groupId, participant, data) {
+  console.log(`Participant ${participant} added to group ${groupId}`);
+  
+  // Send welcome message
+  const welcomeMessage = `Welcome to the group, @${participant}! 👋\n\nPlease take a moment to introduce yourself.`;
+  
+  await sendGroupMessage(groupId, welcomeMessage);
+  
+  // Log the event
+  await logGroupEvent(groupId, 'participant_added', { participant, addedBy: data.addedBy });
+}
+
+async function handleParticipantRemoved(groupId, participant, data) {
+  console.log(`Participant ${participant} removed from group ${groupId}`);
+  
+  // Log the event
+  await logGroupEvent(groupId, 'participant_removed', { participant, removedBy: data.removedBy });
+}
+
+async function handleGroupNameChanged(groupId, oldName, newName) {
+  console.log(`Group ${groupId} name changed from "${oldName}" to "${newName}"`);
+  
+  // Announce the change
+  const announcement = `📝 Group name has been changed from "${oldName}" to "${newName}"`;
+  await sendGroupMessage(groupId, announcement);
+}
+
+async function logGroupEvent(groupId, eventType, data) {
+  // Log to database or external service
+  const logEntry = {
+    groupId,
+    eventType,
+    data,
+    timestamp: new Date().toISOString()
+  };
+  
+  console.log('Group event logged:', logEntry);
+  // Save to database...
+}
+```
+
+## Group Moderation
+
+### Auto-Moderation System
+
+```javascript
+class GroupModerator {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
+    this.bannedWords = ['spam', 'scam', 'fake', 'virus'];
+    this.maxMessageLength = 4000;
+    this.warningCounts = new Map();
+  }
+  
+  async moderateMessage(message) {
+    if (!message.isGroup) return;
+    
+    const violations = [];
+    
+    // Check for banned words
+    if (this.containsBannedWords(message.body)) {
+      violations.push('banned_words');
+    }
+    
+    // Check message length
+    if (message.body.length > this.maxMessageLength) {
+      violations.push('message_too_long');
+    }
+    
+    // Check for excessive caps
+    if (this.isExcessiveCaps(message.body)) {
+      violations.push('excessive_caps');
+    }
+    
+    // Check for repeated messages (spam)
+    if (await this.isRepeatedMessage(message)) {
+      violations.push('repeated_message');
+    }
+    
+    if (violations.length > 0) {
+      await this.handleViolations(message, violations);
+    }
+  }
+  
+  containsBannedWords(text) {
+    const lowerText = text.toLowerCase();
+    return this.bannedWords.some(word => lowerText.includes(word));
+  }
+  
+  isExcessiveCaps(text) {
+    const upperCaseCount = (text.match(/[A-Z]/g) || []).length;
+    const totalLetters = (text.match(/[A-Za-z]/g) || []).length;
+    
+    return totalLetters > 20 && (upperCaseCount / totalLetters) > 0.7;
+  }
+  
+  async isRepeatedMessage(message) {
+    // Check if the same message was sent recently
+    // Implementation would check recent message history
+    return false; // Simplified for example
+  }
+  
+  async handleViolations(message, violations) {
+    const userId = message.participant || message.from;
+    const warningCount = this.warningCounts.get(userId) || 0;
+    
+    // Delete the violating message
+    await this.deleteMessage(message.id);
+    
+    if (warningCount < 2) {
+      // Send warning
+      this.warningCounts.set(userId, warningCount + 1);
+      await this.sendWarning(message.groupId, userId, violations, warningCount + 1);
+    } else {
+      // Remove from group after 3 warnings
+      await this.removeParticipant(message.groupId, userId);
+      await this.notifyRemoval(message.groupId, userId);
+    }
+  }
+  
+  async deleteMessage(messageId) {
+    try {
+      await fetch(`${this.apiUrl}/message/${messageId}/delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+    }
+  }
+  
+  async sendWarning(groupId, userId, violations, warningCount) {
+    const violationText = violations.join(', ');
+    const warningMessage = `⚠️ Warning ${warningCount}/3 for @${userId}\n\nViolation: ${violationText}\n\nPlease follow group rules.`;
+    
+    await sendGroupMessage(groupId, warningMessage);
+  }
+  
+  async removeParticipant(groupId, userId) {
+    try {
+      await fetch(`${this.apiUrl}/group/participants/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          group_id: groupId,
+          participants: [userId.replace('@s.whatsapp.net', '')]
+        })
+      });
+    } catch (error) {
+      console.error('Failed to remove participant:', error);
+    }
+  }
+  
+  async notifyRemoval(groupId, userId) {
+    const message = `🚫 User @${userId} has been removed from the group for repeated violations.`;
+    await sendGroupMessage(groupId, message);
+  }
+}
+
+// Usage
+const moderator = new GroupModerator('http://localhost:3000');
+
+// Handle incoming messages
+function handleIncomingMessage(message) {
+  if (message.isGroup) {
+    moderator.moderateMessage(message);
+  }
+}
+```
+
+## Leave Group
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/group/leave \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "120363347168689807@g.us"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/group/leave', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    group_id: '120363347168689807@g.us'
+  })
+});
+
+const result = await response.json();
+console.log('Left group:', result);
+```
+</CodeGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion icon="users" title="Participant Management">
+    - Validate phone numbers before adding participants
+    - Limit group size based on your use case
+    - Implement proper admin role management
+    - Handle participant join/leave events gracefully
+    - Maintain participant lists for analytics
+  </Accordion>
+  
+  <Accordion icon="shield" title="Group Moderation">
+    - Implement content filtering for inappropriate messages
+    - Set up automated warnings for violations
+    - Monitor group activity for spam and abuse
+    - Maintain audit logs for all moderation actions
+    - Use progressive discipline (warnings before removal)
+  </Accordion>
+  
+  <Accordion icon="settings" title="Group Configuration">
+    - Set clear group descriptions and rules
+    - Use appropriate group names (under 25 characters)
+    - Configure permissions based on group purpose
+    - Update group settings as needed
+    - Use group photos to improve recognition
+  </Accordion>
+  
+  <Accordion icon="performance" title="Performance">
+    - Batch participant operations when possible
+    - Implement rate limiting for group messages
+    - Cache group information for frequently accessed data
+    - Monitor API usage for group operations
+    - Use webhooks for real-time group events
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Set up real-time group event notifications
+  </Card>
+  
+  <Card title="Sessions" icon="database" href="/concepts/sessions">
+    Learn about session management
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/advanced/best-practices">
+    Production deployment guidelines
+  </Card>
+  
+  <Card title="Rate Limiting" icon="gauge" href="/advanced/rate-limiting">
+    Understand API rate limits
+  </Card>
+</CardGroup>

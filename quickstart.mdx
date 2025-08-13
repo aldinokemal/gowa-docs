@@ -1,80 +1,199 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get your WhatsApp API up and running in under 5 minutes"
 ---
 
-## Get started in three steps
+## Prerequisites
 
-Get your documentation site running locally and make your first customization.
+Before you begin, make sure you have:
 
-### Step 1: Set up your local environment
+- Go 1.19 or higher installed
+- A WhatsApp account (can be any existing WhatsApp account)
+- Basic understanding of REST APIs
+
+## Installation
 
 <AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+  <Accordion icon="download" title="Download the Binary">
+    Download the latest release from our GitHub repository:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
+    ```bash
+    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-linux-amd64 -o whatsapp
+    chmod +x whatsapp
+    ```
   </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+  
+  <Accordion icon="docker" title="Using Docker">
+    Run the API using Docker:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
+    ```bash
+    docker run -d \
+      --name whatsapp-api \
+      -p 3000:3000 \
+      -v $(pwd)/database:/app/database \
+      aldinokemal/go-whatsapp-web-multidevice:latest
+    ```
+  </Accordion>
+  
+  <Accordion icon="code" title="Build from Source">
+    Clone and build from source:
+    
+    ```bash
+    git clone https://github.com/aldinokemal/go-whatsapp-web-multidevice.git
+    cd go-whatsapp-web-multidevice
+    go mod tidy
+    go run main.go
+    ```
   </Accordion>
 </AccordionGroup>
 
-### Step 2: Deploy your changes
+## Authentication
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+<Steps>
+  <Step title="Start the API Server">
+    Run the WhatsApp API server:
+    ```bash
+    ./whatsapp
+    ```
+    The server will start on `http://localhost:3000`
+  </Step>
+  
+  <Step title="Login to WhatsApp">
+    Open your browser and navigate to:
+    ```
+    http://localhost:3000/app/login
+    ```
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    You'll see a QR code. Scan it with your WhatsApp mobile app:
+    1. Open WhatsApp on your phone
+    2. Go to Settings → Linked Devices
+    3. Tap "Link a Device" and scan the QR code
+  </Step>
+  
+  <Step title="Verify Connection">
+    Check if the connection is successful:
+    ```bash
+    curl http://localhost:3000/app/devices
+    ```
+    
+    You should see your connected device in the response.
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Send Your First Message
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/send/message \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "6289685028129@s.whatsapp.net",
+    "message": "Hello from WhatsApp API!"
+  }'
+```
 
-### Step 3: Go live
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/send/message', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    phone: '6289685028129@s.whatsapp.net',
+    message: 'Hello from WhatsApp API!'
+  })
+});
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+const result = await response.json();
+console.log(result);
+```
 
-## Next steps
+```python Python
+import requests
 
-Now that you have your docs running, explore these key features:
+url = "http://localhost:3000/send/message"
+payload = {
+    "phone": "6289685028129@s.whatsapp.net",
+    "message": "Hello from WhatsApp API!"
+}
+
+response = requests.post(url, json=payload)
+print(response.json())
+```
+
+```go Go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "net/http"
+)
+
+func main() {
+    url := "http://localhost:3000/send/message"
+    
+    payload := map[string]string{
+        "phone":   "6289685028129@s.whatsapp.net",
+        "message": "Hello from WhatsApp API!",
+    }
+    
+    jsonData, _ := json.Marshal(payload)
+    
+    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
+    if err != nil {
+        fmt.Println("Error:", err)
+        return
+    }
+    defer resp.Body.Close()
+    
+    fmt.Println("Message sent successfully!")
+}
+```
+</CodeGroup>
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Authentication" icon="key" href="/authentication">
+    Learn about secure authentication methods
+  </Card>
+  
+  <Card title="Send Media" icon="image" href="/examples/media-handling">
+    Send images, videos, and documents
+  </Card>
+  
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Receive real-time message notifications
+  </Card>
+  
+  <Card title="API Reference" icon="book" href="/api-reference/introduction">
+    Explore all available endpoints
+  </Card>
 </CardGroup>
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+## Common Issues
+
+<AccordionGroup>
+  <Accordion icon="triangle-exclamation" title="QR Code Not Appearing">
+    If the QR code doesn't appear:
+    1. Make sure the server is running on port 3000
+    2. Clear your browser cache
+    3. Try accessing `http://localhost:3000/app/login` directly
+  </Accordion>
+  
+  <Accordion icon="triangle-exclamation" title="Connection Timeout">
+    If you get connection timeouts:
+    1. Ensure your firewall allows port 3000
+    2. Check if WhatsApp Web is working in your browser
+    3. Try restarting the API server
+  </Accordion>
+  
+  <Accordion icon="triangle-exclamation" title="Message Not Delivered">
+    If messages aren't being delivered:
+    1. Verify the phone number format includes country code
+    2. Check if the recipient is on WhatsApp using `/user/check`
+    3. Ensure your WhatsApp account is not restricted
+  </Accordion>
+</AccordionGroup>

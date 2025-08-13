@@ -1,68 +1,77 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "WhatsApp API MultiDevice",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#25D366",
+    "light": "#128C7E",
+    "dark": "#075E54"
   },
   "favicon": "/favicon.svg",
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Guide",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
               "index",
               "quickstart",
-              "development"
+              "installation",
+              "authentication"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/multidevice",
+              "concepts/sessions",
+              "concepts/webhooks"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Usage Examples",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "examples/sending-messages",
+              "examples/receiving-messages",
+              "examples/media-handling",
+              "examples/group-management"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Advanced",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "advanced/rate-limiting",
+              "advanced/error-handling",
+              "advanced/best-practices"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "WhatsApp API",
+            "openapi": "openapi.yml"
+          },
+          {
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api-reference/introduction",
+              "api-reference/authentication",
+              "api-reference/rate-limits",
+              "api-reference/errors"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "SDKs & Libraries",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api-reference/sdks/go",
+              "api-reference/sdks/javascript",
+              "api-reference/sdks/python",
+              "api-reference/sdks/postman"
             ]
           }
         ]
@@ -71,19 +80,9 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Community",
-          "href": "https://mintlify.com/community",
-          "icon": "slack"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
+          "anchor": "GitHub",
+          "href": "https://github.com/aldinokemal/go-whatsapp-web-multidevice",
+          "icon": "github"
         }
       ]
     }
@@ -96,13 +95,13 @@
     "links": [
       {
         "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "href": "https://github.com/aldinokemal/go-whatsapp-web-multidevice/issues"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "label": "Try API",
+      "href": "http://localhost:3000"
     }
   },
   "contextual": {
@@ -119,9 +118,18 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/aldinokemal/go-whatsapp-web-multidevice"
     }
+  },
+  "api": {
+    "baseUrl": "http://localhost:3000",
+    "auth": {
+      "method": "basic"
+    }
+  },
+  "metadata": {
+    "og:title": "WhatsApp API MultiDevice Documentation",
+    "og:description": "Complete documentation for WhatsApp API MultiDevice - Send and receive WhatsApp messages programmatically",
+    "og:image": "/images/hero-light.png"
   }
 }

@@ -1,0 +1,392 @@
+---
+title: "Authentication"
+description: "Learn how to authenticate and manage WhatsApp connections"
+---
+
+## Overview
+
+WhatsApp API MultiDevice uses the WhatsApp Web protocol for authentication. This means you need to link your WhatsApp account using QR code scanning or pairing codes, similar to WhatsApp Web.
+
+## Authentication Methods
+
+<CardGroup cols={2}>
+  <Card title="QR Code" icon="qrcode" href="#qr-code-authentication">
+    Scan QR code with WhatsApp mobile app
+  </Card>
+  <Card title="Pairing Code" icon="mobile" href="#pairing-code-authentication">
+    Use 8-digit pairing code for authentication
+  </Card>
+</CardGroup>
+
+## QR Code Authentication
+
+### Step 1: Initiate Login
+
+Make a GET request to the login endpoint:
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/app/login
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/app/login');
+const data = await response.json();
+console.log(data);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/app/login')
+data = response.json()
+print(data)
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "code": "SUCCESS",
+  "message": "Success",
+  "results": {
+    "qr_duration": 30,
+    "qr_link": "http://localhost:3000/statics/images/qrcode/scan-qr-b0b7bb43-9a22-455a-814f-5a225c743310.png"
+  }
+}
+```
+
+### Step 2: Scan QR Code
+
+1. Open WhatsApp on your mobile device
+2. Go to **Settings** → **Linked Devices**
+3. Tap **"Link a Device"**
+4. Point your camera at the QR code displayed in the browser or from the `qr_link` URL
+
+<Warning>
+QR codes expire after 30 seconds. If the code expires, make a new login request to generate a fresh QR code.
+</Warning>
+
+### Step 3: Verify Connection
+
+After scanning, verify the connection:
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/app/devices
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/app/devices');
+const devices = await response.json();
+console.log(devices);
+```
+</CodeGroup>
+
+## Pairing Code Authentication
+
+For headless environments or when QR code scanning is not feasible, use pairing codes.
+
+### Step 1: Request Pairing Code
+
+<CodeGroup>
+```bash cURL
+curl -X GET "http://localhost:3000/app/login-with-code?phone=628912344551"
+```
+
+```javascript JavaScript
+const phone = '628912344551'; // Your WhatsApp number with country code
+const response = await fetch(`http://localhost:3000/app/login-with-code?phone=${phone}`);
+const data = await response.json();
+console.log(data);
+```
+
+```python Python
+import requests
+
+phone = '628912344551'  # Your WhatsApp number with country code
+response = requests.get(f'http://localhost:3000/app/login-with-code?phone={phone}')
+data = response.json()
+print(data)
+```
+</CodeGroup>
+
+**Response:**
+```json
+{
+  "code": "SUCCESS",
+  "message": "Success",
+  "results": {
+    "pair_code": "ABCD-1234"
+  }
+}
+```
+
+### Step 2: Enter Pairing Code
+
+1. Open WhatsApp on your mobile device
+2. Go to **Settings** → **Linked Devices**
+3. Tap **"Link a Device"**
+4. Tap **"Link with phone number instead"**
+5. Enter the 8-digit pairing code (e.g., `ABCD-1234`)
+
+## Session Management
+
+### Check Connection Status
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/app/devices
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/app/devices');
+const data = await response.json();
+
+if (data.code === 'SUCCESS' && data.results.length > 0) {
+  console.log('Connected:', data.results[0].name);
+} else {
+  console.log('Not connected');
+}
+```
+</CodeGroup>
+
+**Response when connected:**
+```json
+{
+  "code": "SUCCESS",
+  "message": "Fetch device success",
+  "results": [
+    {
+      "name": "Aldino Kemal",
+      "device": "628960561XXX.0:64@s.whatsapp.net"
+    }
+  ]
+}
+```
+
+### Reconnect to WhatsApp
+
+If the connection is lost, attempt to reconnect:
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/app/reconnect
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/app/reconnect');
+const result = await response.json();
+console.log(result);
+```
+</CodeGroup>
+
+### Logout and Remove Session
+
+To logout and remove the WhatsApp session:
+
+<CodeGroup>
+```bash cURL
+curl -X GET http://localhost:3000/app/logout
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/app/logout');
+const result = await response.json();
+console.log(result);
+```
+</CodeGroup>
+
+<Warning>
+This will remove all session data and require re-authentication. Use with caution in production environments.
+</Warning>
+
+## API Authentication
+
+### Basic Authentication
+
+For API security, you can implement basic authentication:
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/send/message \
+  -u "username:password" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "6289685028129@s.whatsapp.net",
+    "message": "Hello World"
+  }'
+```
+
+```javascript JavaScript
+const username = 'your_username';
+const password = 'your_password';
+const credentials = btoa(`${username}:${password}`);
+
+const response = await fetch('http://localhost:3000/send/message', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Basic ${credentials}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    phone: '6289685028129@s.whatsapp.net',
+    message: 'Hello World'
+  })
+});
+```
+</CodeGroup>
+
+### API Key Authentication
+
+You can also implement API key authentication:
+
+```bash
+curl -X POST http://localhost:3000/send/message \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "phone": "6289685028129@s.whatsapp.net",
+    "message": "Hello World"
+  }'
+```
+
+## Connection States
+
+The API maintains different connection states:
+
+| State | Description | Action Required |
+|-------|-------------|-----------------|
+| `CONNECTED` | Successfully connected to WhatsApp | None |
+| `CONNECTING` | Attempting to connect | Wait for connection |
+| `DISCONNECTED` | Lost connection to WhatsApp | Reconnect or re-authenticate |
+| `LOGGED_OUT` | Session terminated | Re-authenticate |
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion icon="shield" title="Security">
+    - Store session data securely
+    - Use HTTPS in production
+    - Implement rate limiting
+    - Validate all incoming requests
+    - Use strong API authentication
+  </Accordion>
+  
+  <Accordion icon="sync" title="Connection Management">
+    - Monitor connection status regularly
+    - Implement automatic reconnection logic
+    - Handle connection errors gracefully
+    - Keep session data backed up
+  </Accordion>
+  
+  <Accordion icon="clock" title="Session Persistence">
+    - Sessions persist across API restarts
+    - Store session files securely
+    - Implement session rotation policies
+    - Monitor for unauthorized access
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="triangle-exclamation" title="QR Code Not Appearing">
+    **Possible causes:**
+    - Server not running on correct port
+    - Browser cache issues
+    - Network connectivity problems
+    
+    **Solutions:**
+    ```bash
+    # Check if server is running
+    curl http://localhost:3000/health
+    
+    # Clear browser cache and try again
+    # Ensure port 3000 is accessible
+    ```
+  </Accordion>
+  
+  <Accordion icon="triangle-exclamation" title="Authentication Failed">
+    **Possible causes:**
+    - WhatsApp account restrictions
+    - Multiple active sessions
+    - Network issues
+    
+    **Solutions:**
+    ```bash
+    # Logout and try again
+    curl http://localhost:3000/app/logout
+    
+    # Check WhatsApp account status
+    # Ensure stable internet connection
+    ```
+  </Accordion>
+  
+  <Accordion icon="triangle-exclamation" title="Session Expired">
+    **Possible causes:**
+    - Long period of inactivity
+    - WhatsApp account changes
+    - Device deauthorization
+    
+    **Solutions:**
+    - Re-authenticate using QR code
+    - Check linked devices in WhatsApp
+    - Verify account status
+  </Accordion>
+</AccordionGroup>
+
+## Monitoring Authentication
+
+### Health Check Endpoint
+
+```bash
+curl http://localhost:3000/health
+```
+
+### Connection Status Monitoring
+
+Set up monitoring to check connection status:
+
+```javascript
+const checkConnection = async () => {
+  try {
+    const response = await fetch('http://localhost:3000/app/devices');
+    const data = await response.json();
+    
+    if (data.results && data.results.length > 0) {
+      console.log('✅ Connected to WhatsApp');
+      return true;
+    } else {
+      console.log('❌ Not connected to WhatsApp');
+      return false;
+    }
+  } catch (error) {
+    console.error('🔥 Connection check failed:', error);
+    return false;
+  }
+};
+
+// Check every 30 seconds
+setInterval(checkConnection, 30000);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Send Messages" icon="paper-plane" href="/examples/sending-messages">
+    Start sending your first messages
+  </Card>
+  
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Receive real-time notifications
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="/advanced/error-handling">
+    Handle authentication errors
+  </Card>
+  
+  <Card title="Rate Limiting" icon="gauge" href="/advanced/rate-limiting">
+    Understand API limits
+  </Card>
+</CardGroup>

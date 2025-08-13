@@ -1,0 +1,377 @@
+---
+title: "Installation"
+description: "Multiple ways to install and deploy WhatsApp API MultiDevice"
+---
+
+## System Requirements
+
+- **Operating System**: Linux, Windows, macOS
+- **Go Version**: 1.19 or higher (for building from source)
+- **Memory**: Minimum 512MB RAM
+- **Storage**: At least 1GB free space
+- **Network**: Stable internet connection
+
+## Installation Methods
+
+<CardGroup cols={3}>
+  <Card title="Binary Release" icon="download" href="#binary-release">
+    Quick setup with pre-built binaries
+  </Card>
+  <Card title="Docker" icon="docker" href="#docker">
+    Containerized deployment
+  </Card>
+  <Card title="Source Code" icon="code" href="#from-source">
+    Build from source code
+  </Card>
+</CardGroup>
+
+## Binary Release
+
+Download the latest pre-built binary for your platform:
+
+<Tabs>
+  <Tab title="Linux">
+    ```bash
+    # AMD64
+    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-linux-amd64 -o whatsapp
+    chmod +x whatsapp
+    
+    # ARM64
+    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-linux-arm64 -o whatsapp
+    chmod +x whatsapp
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    ```powershell
+    # Download Windows binary
+    Invoke-WebRequest -Uri "https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-windows-amd64.exe" -OutFile "whatsapp.exe"
+    ```
+  </Tab>
+  
+  <Tab title="macOS">
+    ```bash
+    # Intel Macs
+    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-darwin-amd64 -o whatsapp
+    chmod +x whatsapp
+    
+    # Apple Silicon (M1/M2)
+    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-darwin-arm64 -o whatsapp
+    chmod +x whatsapp
+    ```
+  </Tab>
+</Tabs>
+
+### Run the Binary
+
+```bash
+./whatsapp
+```
+
+The API will start on `http://localhost:3000`
+
+## Docker
+
+### Using Docker Run
+
+<Tabs>
+  <Tab title="Basic Setup">
+    ```bash
+    docker run -d \
+      --name whatsapp-api \
+      -p 3000:3000 \
+      aldinokemal/go-whatsapp-web-multidevice:latest
+    ```
+  </Tab>
+  
+  <Tab title="With Volume">
+    ```bash
+    docker run -d \
+      --name whatsapp-api \
+      -p 3000:3000 \
+      -v $(pwd)/database:/app/database \
+      aldinokemal/go-whatsapp-web-multidevice:latest
+    ```
+  </Tab>
+  
+  <Tab title="With Environment Variables">
+    ```bash
+    docker run -d \
+      --name whatsapp-api \
+      -p 3000:3000 \
+      -e PORT=3000 \
+      -e APP_DEBUG=true \
+      -v $(pwd)/database:/app/database \
+      aldinokemal/go-whatsapp-web-multidevice:latest
+    ```
+  </Tab>
+</Tabs>
+
+### Using Docker Compose
+
+Create a `docker-compose.yml` file:
+
+```yaml
+version: '3.8'
+
+services:
+  whatsapp-api:
+    image: aldinokemal/go-whatsapp-web-multidevice:latest
+    container_name: whatsapp-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./database:/app/database
+      - ./logs:/app/logs
+    environment:
+      - PORT=3000
+      - APP_DEBUG=false
+      - APP_ENV=production
+    networks:
+      - whatsapp-network
+
+networks:
+  whatsapp-network:
+    driver: bridge
+```
+
+Start the service:
+
+```bash
+docker-compose up -d
+```
+
+## From Source
+
+### Prerequisites
+
+- Go 1.19 or higher
+- Git
+
+### Clone and Build
+
+```bash
+# Clone the repository
+git clone https://github.com/aldinokemal/go-whatsapp-web-multidevice.git
+cd go-whatsapp-web-multidevice
+
+# Download dependencies
+go mod tidy
+
+# Build the application
+go build -o whatsapp main.go
+
+# Run the application
+./whatsapp
+```
+
+### Development Mode
+
+For development with hot reload:
+
+```bash
+# Install air for hot reload
+go install github.com/cosmtrek/air@latest
+
+# Run in development mode
+air
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | Server port | `3000` |
+| `APP_DEBUG` | Enable debug mode | `false` |
+| `APP_ENV` | Environment (development/production) | `development` |
+| `DB_TYPE` | Database type (sqlite/mysql/postgres) | `sqlite` |
+| `DB_PATH` | Database file path (for SQLite) | `./database/whatsapp.db` |
+
+### Configuration File
+
+Create a `config.yml` file:
+
+```yaml
+app:
+  port: 3000
+  debug: false
+  environment: production
+
+database:
+  type: sqlite
+  path: ./database/whatsapp.db
+
+logging:
+  level: info
+  file: ./logs/app.log
+
+security:
+  enable_cors: true
+  allowed_origins: ["*"]
+```
+
+## Database Setup
+
+### SQLite (Default)
+
+No additional setup required. The database file will be created automatically.
+
+### MySQL
+
+```bash
+# Set environment variables
+export DB_TYPE=mysql
+export DB_HOST=localhost
+export DB_PORT=3306
+export DB_NAME=whatsapp_api
+export DB_USER=username
+export DB_PASSWORD=password
+```
+
+### PostgreSQL
+
+```bash
+# Set environment variables
+export DB_TYPE=postgres
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=whatsapp_api
+export DB_USER=username
+export DB_PASSWORD=password
+export DB_SSLMODE=disable
+```
+
+## Production Deployment
+
+### Systemd Service
+
+Create `/etc/systemd/system/whatsapp-api.service`:
+
+```ini
+[Unit]
+Description=WhatsApp API MultiDevice
+After=network.target
+
+[Service]
+Type=simple
+User=whatsapp
+WorkingDirectory=/opt/whatsapp-api
+ExecStart=/opt/whatsapp-api/whatsapp
+Restart=always
+RestartSec=5
+Environment=PORT=3000
+Environment=APP_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl enable whatsapp-api
+sudo systemctl start whatsapp-api
+sudo systemctl status whatsapp-api
+```
+
+### Nginx Reverse Proxy
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+## Verification
+
+After installation, verify the setup:
+
+1. **Check if the service is running:**
+   ```bash
+   curl http://localhost:3000/health
+   ```
+
+2. **Login to WhatsApp:**
+   ```bash
+   curl http://localhost:3000/app/login
+   ```
+
+3. **Check connected devices:**
+   ```bash
+   curl http://localhost:3000/app/devices
+   ```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="triangle-exclamation" title="Port Already in Use">
+    If port 3000 is already in use:
+    
+    ```bash
+    # Find the process using port 3000
+    lsof -i :3000
+    
+    # Kill the process or use a different port
+    export PORT=3001
+    ./whatsapp
+    ```
+  </Accordion>
+  
+  <Accordion icon="triangle-exclamation" title="Permission Denied">
+    If you get permission denied errors:
+    
+    ```bash
+    # Make sure the binary is executable
+    chmod +x whatsapp
+    
+    # For Linux/macOS, you might need to allow execution
+    sudo xattr -d com.apple.quarantine whatsapp  # macOS only
+    ```
+  </Accordion>
+  
+  <Accordion icon="triangle-exclamation" title="Database Connection Error">
+    If you encounter database errors:
+    
+    1. Check database permissions
+    2. Ensure the database directory exists
+    3. Verify connection string format
+    4. Check firewall settings for external databases
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/authentication">
+    Set up WhatsApp authentication
+  </Card>
+  
+  <Card title="API Reference" icon="book" href="/api-reference/introduction">
+    Explore available endpoints
+  </Card>
+  
+  <Card title="Examples" icon="code" href="/examples/sending-messages">
+    See practical examples
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/advanced/best-practices">
+    Production deployment tips
+  </Card>
+</CardGroup>

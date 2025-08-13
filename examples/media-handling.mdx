@@ -1,0 +1,915 @@
+---
+title: "Media Handling"
+description: "Complete guide to sending, receiving, and processing media files with WhatsApp API"
+---
+
+## Overview
+
+WhatsApp API supports various media types including images, videos, audio files, and documents. This guide covers how to handle media files effectively, including upload, download, processing, and optimization.
+
+## Supported Media Types
+
+| Type | Formats | Max Size | Use Cases |
+|------|---------|----------|-----------|
+| **Images** | JPG, PNG, GIF, WebP | 16 MB | Photos, screenshots, graphics |
+| **Videos** | MP4, 3GP, MOV, AVI | 64 MB | Video messages, tutorials |
+| **Audio** | MP3, OGG, AAC, M4A, WAV | 16 MB | Voice messages, music |
+| **Documents** | PDF, DOC, XLS, PPT, TXT | 100 MB | Files, presentations, reports |
+
+## Sending Media
+
+### Image Upload Methods
+
+<Tabs>
+  <Tab title="File Upload">
+    ```bash
+    curl -X POST http://localhost:3000/send/image \
+      -F "phone=6289685028129@s.whatsapp.net" \
+      -F "caption=Beautiful sunset photo 🌅" \
+      -F "image=@/path/to/sunset.jpg" \
+      -F "compress=false" \
+      -F "view_once=false"
+    ```
+  </Tab>
+  
+  <Tab title="URL Upload">
+    ```bash
+    curl -X POST http://localhost:3000/send/image \
+      -H "Content-Type: application/json" \
+      -d '{
+        "phone": "6289685028129@s.whatsapp.net",
+        "caption": "Image from URL",
+        "image_url": "https://example.com/image.jpg",
+        "compress": true
+      }'
+    ```
+  </Tab>
+  
+  <Tab title="Base64 Upload">
+    ```bash
+    curl -X POST http://localhost:3000/send/image \
+      -H "Content-Type: application/json" \
+      -d '{
+        "phone": "6289685028129@s.whatsapp.net",
+        "caption": "Base64 encoded image",
+        "image_base64": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEA..."
+      }'
+    ```
+  </Tab>
+</Tabs>
+
+### JavaScript Media Upload
+
+```javascript
+class MediaUploader {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
+  }
+  
+  async uploadImage(phone, imageFile, options = {}) {
+    const formData = new FormData();
+    formData.append('phone', phone);
+    formData.append('image', imageFile);
+    
+    if (options.caption) formData.append('caption', options.caption);
+    if (options.compress !== undefined) formData.append('compress', options.compress);
+    if (options.viewOnce) formData.append('view_once', options.viewOnce);
+    
+    try {
+      const response = await fetch(`${this.apiUrl}/send/image`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      const result = await response.json();
+      
+      if (result.code === 'SUCCESS') {
+        console.log('Image sent successfully:', result);
+        return result;
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error('Failed to upload image:', error);
+      throw error;
+    }
+  }
+  
+  async uploadFromUrl(phone, mediaUrl, type = 'image', options = {}) {
+    const payload = {
+      phone,
+      [`${type}_url`]: mediaUrl,
+      ...options
+    };
+    
+    try {
+      const response = await fetch(`${this.apiUrl}/send/${type}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to upload ${type} from URL:`, error);
+      throw error;
+    }
+  }
+  
+  async resizeAndUpload(phone, imageFile, maxWidth = 1920, maxHeight = 1080) {
+    try {
+      const resizedFile = await this.resizeImage(imageFile, maxWidth, maxHeight);
+      return await this.uploadImage(phone, resizedFile, { compress: true });
+    } catch (error) {
+      console.error('Failed to resize and upload:', error);
+      throw error;
+    }
+  }
+  
+  resizeImage(file, maxWidth, maxHeight) {
+    return new Promise((resolve, reject) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        const ratio = Math.min(maxWidth / img.width, maxHeight / img.height);
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        canvas.toBlob(resolve, 'image/jpeg', 0.8);
+      };
+      
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  }
+}
+
+// Usage example
+const uploader = new MediaUploader('http://localhost:3000');
+
+// Upload from file input
+document.getElementById('imageInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (file) {
+    try {
+      await uploader.uploadImage('6289685028129@s.whatsapp.net', file, {
+        caption: 'Uploaded from web interface',
+        compress: true
+      });
+    } catch (error) {
+      alert('Upload failed: ' + error.message);
+    }
+  }
+});
+```
+
+### Batch Media Upload
+
+```javascript
+class BatchMediaUploader {
+  constructor(apiUrl, options = {}) {
+    this.apiUrl = apiUrl;
+    this.maxConcurrent = options.maxConcurrent || 3;
+    this.delayBetweenUploads = options.delayBetweenUploads || 1000;
+  }
+  
+  async uploadMultipleFiles(phone, files, options = {}) {
+    const results = [];
+    const batches = this.createBatches(files, this.maxConcurrent);
+    
+    for (const batch of batches) {
+      const batchPromises = batch.map(file => 
+        this.uploadSingleFile(phone, file, options)
+      );
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      results.push(...batchResults);
+      
+      // Delay between batches
+      if (batches.indexOf(batch) < batches.length - 1) {
+        await this.sleep(this.delayBetweenUploads);
+      }
+    }
+    
+    return results;
+  }
+  
+  async uploadSingleFile(phone, file, options) {
+    try {
+      const mediaType = this.getMediaType(file.type);
+      const formData = new FormData();
+      
+      formData.append('phone', phone);
+      formData.append(mediaType, file);
+      
+      if (options.caption) {
+        formData.append('caption', `${options.caption} - ${file.name}`);
+      }
+      
+      const response = await fetch(`${this.apiUrl}/send/${mediaType}`, {
+        method: 'POST',
+        body: formData
+      });
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`Failed to upload ${file.name}:`, error);
+      throw error;
+    }
+  }
+  
+  getMediaType(mimeType) {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    return 'file';
+  }
+  
+  createBatches(array, size) {
+    const batches = [];
+    for (let i = 0; i < array.length; i += size) {
+      batches.push(array.slice(i, i + size));
+    }
+    return batches;
+  }
+  
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+```
+
+## Receiving and Downloading Media
+
+### Download Media from Messages
+
+```javascript
+class MediaDownloader {
+  constructor(apiUrl) {
+    this.apiUrl = apiUrl;
+  }
+  
+  async downloadMediaFromMessage(messageId) {
+    try {
+      const response = await fetch(`${this.apiUrl}/message/${messageId}/media`);
+      const result = await response.json();
+      
+      if (result.code === 'SUCCESS') {
+        const mediaInfo = result.results;
+        console.log('Media info:', mediaInfo);
+        
+        // Download the actual media file
+        const mediaBuffer = await this.downloadFile(mediaInfo.url);
+        
+        return {
+          buffer: mediaBuffer,
+          filename: mediaInfo.filename,
+          mimetype: mediaInfo.mimetype,
+          size: mediaInfo.file_length
+        };
+      } else {
+        throw new Error(result.message);
+      }
+    } catch (error) {
+      console.error('Failed to download media:', error);
+      throw error;
+    }
+  }
+  
+  async downloadFile(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.buffer();
+  }
+  
+  async saveMediaToFile(messageId, savePath) {
+    const fs = require('fs').promises;
+    const path = require('path');
+    
+    try {
+      const media = await this.downloadMediaFromMessage(messageId);
+      const fullPath = path.join(savePath, media.filename);
+      
+      await fs.writeFile(fullPath, media.buffer);
+      console.log(`Media saved to: ${fullPath}`);
+      
+      return fullPath;
+    } catch (error) {
+      console.error('Failed to save media:', error);
+      throw error;
+    }
+  }
+}
+
+// Handle incoming media messages
+function handleIncomingMessage(message) {
+  if (message.hasMedia) {
+    processIncomingMedia(message);
+  }
+}
+
+async function processIncomingMedia(message) {
+  const downloader = new MediaDownloader('http://localhost:3000');
+  
+  try {
+    const media = await downloader.downloadMediaFromMessage(message.id);
+    
+    console.log(`Received ${message.type}: ${media.filename} (${media.size} bytes)`);
+    
+    // Process based on media type
+    switch (message.type) {
+      case 'image':
+        await processImage(media, message);
+        break;
+      case 'video':
+        await processVideo(media, message);
+        break;
+      case 'audio':
+        await processAudio(media, message);
+        break;
+      case 'document':
+        await processDocument(media, message);
+        break;
+    }
+  } catch (error) {
+    console.error('Failed to process incoming media:', error);
+  }
+}
+```
+
+## Media Processing
+
+### Image Processing
+
+```javascript
+const sharp = require('sharp'); // npm install sharp
+
+class ImageProcessor {
+  constructor() {
+    this.supportedFormats = ['jpeg', 'png', 'webp', 'gif'];
+  }
+  
+  async processImage(buffer, options = {}) {
+    try {
+      let image = sharp(buffer);
+      
+      // Get image metadata
+      const metadata = await image.metadata();
+      console.log('Image metadata:', metadata);
+      
+      // Resize if needed
+      if (options.resize) {
+        image = image.resize(options.resize.width, options.resize.height, {
+          fit: options.resize.fit || 'inside',
+          withoutEnlargement: true
+        });
+      }
+      
+      // Apply filters
+      if (options.blur) {
+        image = image.blur(options.blur);
+      }
+      
+      if (options.sharpen) {
+        image = image.sharpen();
+      }
+      
+      if (options.grayscale) {
+        image = image.grayscale();
+      }
+      
+      // Convert format if needed
+      if (options.format && this.supportedFormats.includes(options.format)) {
+        image = image.toFormat(options.format, {
+          quality: options.quality || 80
+        });
+      }
+      
+      return await image.toBuffer();
+    } catch (error) {
+      console.error('Image processing failed:', error);
+      throw error;
+    }
+  }
+  
+  async createThumbnail(buffer, size = 150) {
+    try {
+      return await sharp(buffer)
+        .resize(size, size, { fit: 'cover' })
+        .jpeg({ quality: 70 })
+        .toBuffer();
+    } catch (error) {
+      console.error('Thumbnail creation failed:', error);
+      throw error;
+    }
+  }
+  
+  async addWatermark(buffer, watermarkText) {
+    try {
+      const watermarkSvg = `
+        <svg width="200" height="50">
+          <text x="10" y="30" font-family="Arial" font-size="20" fill="white" opacity="0.7">
+            ${watermarkText}
+          </text>
+        </svg>
+      `;
+      
+      const watermarkBuffer = Buffer.from(watermarkSvg);
+      
+      return await sharp(buffer)
+        .composite([{
+          input: watermarkBuffer,
+          gravity: 'southeast'
+        }])
+        .toBuffer();
+    } catch (error) {
+      console.error('Watermark addition failed:', error);
+      throw error;
+    }
+  }
+}
+
+// Usage
+const processor = new ImageProcessor();
+
+async function processImage(media, message) {
+  try {
+    // Create thumbnail
+    const thumbnail = await processor.createThumbnail(media.buffer);
+    
+    // Process image (resize and compress)
+    const processedImage = await processor.processImage(media.buffer, {
+      resize: { width: 1920, height: 1080 },
+      format: 'jpeg',
+      quality: 80
+    });
+    
+    // Save processed images
+    await saveFile(thumbnail, `thumb_${media.filename}`);
+    await saveFile(processedImage, `processed_${media.filename}`);
+    
+    // Send confirmation
+    await sendReply(message.from, '✅ Image processed successfully!');
+  } catch (error) {
+    console.error('Image processing failed:', error);
+    await sendReply(message.from, '❌ Failed to process image.');
+  }
+}
+```
+
+### Video Processing
+
+```javascript
+const ffmpeg = require('fluent-ffmpeg'); // npm install fluent-ffmpeg
+
+class VideoProcessor {
+  constructor() {
+    this.supportedFormats = ['mp4', 'avi', 'mov', '3gp'];
+  }
+  
+  async extractThumbnail(inputPath, outputPath, timeOffset = '00:00:01') {
+    return new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .seekInput(timeOffset)
+        .frames(1)
+        .output(outputPath)
+        .on('end', () => {
+          console.log('Thumbnail extracted successfully');
+          resolve(outputPath);
+        })
+        .on('error', reject)
+        .run();
+    });
+  }
+  
+  async compressVideo(inputPath, outputPath, options = {}) {
+    return new Promise((resolve, reject) => {
+      const command = ffmpeg(inputPath)
+        .videoCodec('libx264')
+        .audioCodec('aac')
+        .format('mp4');
+      
+      // Set compression options
+      if (options.bitrate) {
+        command.videoBitrate(options.bitrate);
+      }
+      
+      if (options.size) {
+        command.size(options.size);
+      }
+      
+      if (options.duration) {
+        command.duration(options.duration);
+      }
+      
+      command
+        .output(outputPath)
+        .on('start', (cmd) => {
+          console.log('Started compression:', cmd);
+        })
+        .on('progress', (progress) => {
+          console.log(`Processing: ${Math.round(progress.percent)}% done`);
+        })
+        .on('end', () => {
+          console.log('Video compression completed');
+          resolve(outputPath);
+        })
+        .on('error', reject)
+        .run();
+    });
+  }
+  
+  async getVideoInfo(inputPath) {
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(inputPath, (err, metadata) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(metadata);
+        }
+      });
+    });
+  }
+}
+
+// Usage
+async function processVideo(media, message) {
+  const processor = new VideoProcessor();
+  const tempPath = `/tmp/${media.filename}`;
+  
+  try {
+    // Save temporary file
+    await saveFile(media.buffer, tempPath);
+    
+    // Get video information
+    const videoInfo = await processor.getVideoInfo(tempPath);
+    console.log('Video info:', videoInfo);
+    
+    // Extract thumbnail
+    const thumbnailPath = `/tmp/thumb_${media.filename}.jpg`;
+    await processor.extractThumbnail(tempPath, thumbnailPath);
+    
+    // Compress if file is too large
+    if (media.size > 50 * 1024 * 1024) { // 50MB
+      const compressedPath = `/tmp/compressed_${media.filename}`;
+      await processor.compressVideo(tempPath, compressedPath, {
+        bitrate: '1000k',
+        size: '1280x720'
+      });
+    }
+    
+    await sendReply(message.from, '✅ Video processed successfully!');
+  } catch (error) {
+    console.error('Video processing failed:', error);
+    await sendReply(message.from, '❌ Failed to process video.');
+  } finally {
+    // Clean up temporary files
+    cleanupTempFiles([tempPath]);
+  }
+}
+```
+
+### Audio Processing
+
+```javascript
+class AudioProcessor {
+  async processAudio(buffer, options = {}) {
+    // Convert audio format, extract metadata, etc.
+    try {
+      const inputPath = '/tmp/input_audio';
+      const outputPath = '/tmp/output_audio.mp3';
+      
+      await saveFile(buffer, inputPath);
+      
+      return new Promise((resolve, reject) => {
+        ffmpeg(inputPath)
+          .audioCodec('mp3')
+          .audioBitrate('128k')
+          .output(outputPath)
+          .on('end', async () => {
+            const processedBuffer = await readFile(outputPath);
+            resolve(processedBuffer);
+          })
+          .on('error', reject)
+          .run();
+      });
+    } catch (error) {
+      console.error('Audio processing failed:', error);
+      throw error;
+    }
+  }
+  
+  async extractAudioMetadata(buffer) {
+    const inputPath = '/tmp/audio_metadata';
+    await saveFile(buffer, inputPath);
+    
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(inputPath, (err, metadata) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve({
+            duration: metadata.format.duration,
+            bitrate: metadata.format.bit_rate,
+            format: metadata.format.format_name,
+            size: metadata.format.size
+          });
+        }
+      });
+    });
+  }
+}
+```
+
+## File Validation and Security
+
+### File Type Validation
+
+```javascript
+class FileValidator {
+  constructor() {
+    this.allowedMimeTypes = {
+      image: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      video: ['video/mp4', 'video/3gpp', 'video/quicktime', 'video/x-msvideo'],
+      audio: ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/aac'],
+      document: ['application/pdf', 'application/msword', 'text/plain']
+    };
+    
+    this.maxSizes = {
+      image: 16 * 1024 * 1024,   // 16MB
+      video: 64 * 1024 * 1024,   // 64MB
+      audio: 16 * 1024 * 1024,   // 16MB
+      document: 100 * 1024 * 1024 // 100MB
+    };
+  }
+  
+  validateFile(file, expectedType) {
+    const errors = [];
+    
+    // Check file size
+    if (file.size > this.maxSizes[expectedType]) {
+      errors.push(`File size exceeds limit (${this.maxSizes[expectedType]} bytes)`);
+    }
+    
+    // Check MIME type
+    if (!this.allowedMimeTypes[expectedType].includes(file.type)) {
+      errors.push(`Invalid file type. Expected: ${this.allowedMimeTypes[expectedType].join(', ')}`);
+    }
+    
+    // Check file signature (magic bytes)
+    if (!this.validateFileSignature(file, expectedType)) {
+      errors.push('File signature validation failed');
+    }
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
+  }
+  
+  validateFileSignature(file, expectedType) {
+    // Implementation would check magic bytes
+    // This is a simplified version
+    return true;
+  }
+  
+  sanitizeFilename(filename) {
+    // Remove potentially dangerous characters
+    return filename.replace(/[^a-zA-Z0-9.-]/g, '_');
+  }
+}
+
+// Usage in upload handler
+async function handleFileUpload(file, expectedType) {
+  const validator = new FileValidator();
+  const validation = validator.validateFile(file, expectedType);
+  
+  if (!validation.isValid) {
+    throw new Error(`File validation failed: ${validation.errors.join(', ')}`);
+  }
+  
+  const sanitizedFilename = validator.sanitizeFilename(file.name);
+  // Proceed with upload...
+}
+```
+
+## Media Storage and CDN
+
+### Cloud Storage Integration
+
+```javascript
+class MediaStorage {
+  constructor(storageType = 'local', config = {}) {
+    this.storageType = storageType;
+    this.config = config;
+  }
+  
+  async uploadToStorage(buffer, filename, metadata = {}) {
+    switch (this.storageType) {
+      case 'aws-s3':
+        return await this.uploadToS3(buffer, filename, metadata);
+      case 'google-cloud':
+        return await this.uploadToGCS(buffer, filename, metadata);
+      case 'azure':
+        return await this.uploadToAzure(buffer, filename, metadata);
+      default:
+        return await this.uploadToLocal(buffer, filename, metadata);
+    }
+  }
+  
+  async uploadToS3(buffer, filename, metadata) {
+    const AWS = require('aws-sdk');
+    const s3 = new AWS.S3(this.config.aws);
+    
+    const params = {
+      Bucket: this.config.bucket,
+      Key: filename,
+      Body: buffer,
+      ContentType: metadata.contentType,
+      Metadata: metadata
+    };
+    
+    try {
+      const result = await s3.upload(params).promise();
+      return {
+        url: result.Location,
+        key: result.Key,
+        bucket: result.Bucket
+      };
+    } catch (error) {
+      console.error('S3 upload failed:', error);
+      throw error;
+    }
+  }
+  
+  async uploadToLocal(buffer, filename, metadata) {
+    const fs = require('fs').promises;
+    const path = require('path');
+    
+    const uploadDir = this.config.uploadDir || './uploads';
+    const filePath = path.join(uploadDir, filename);
+    
+    // Ensure upload directory exists
+    await fs.mkdir(uploadDir, { recursive: true });
+    
+    // Write file
+    await fs.writeFile(filePath, buffer);
+    
+    return {
+      url: `/uploads/${filename}`,
+      path: filePath,
+      filename
+    };
+  }
+  
+  async generatePresignedUrl(key, expiresIn = 3600) {
+    if (this.storageType === 'aws-s3') {
+      const AWS = require('aws-sdk');
+      const s3 = new AWS.S3(this.config.aws);
+      
+      return s3.getSignedUrl('getObject', {
+        Bucket: this.config.bucket,
+        Key: key,
+        Expires: expiresIn
+      });
+    }
+    
+    // For other storage types, implement accordingly
+    throw new Error(`Presigned URLs not implemented for ${this.storageType}`);
+  }
+}
+```
+
+## Performance Optimization
+
+### Media Caching
+
+```javascript
+class MediaCache {
+  constructor(options = {}) {
+    this.cache = new Map();
+    this.maxSize = options.maxSize || 100; // Maximum number of cached items
+    this.ttl = options.ttl || 3600000; // 1 hour TTL
+  }
+  
+  set(key, value, customTTL) {
+    const ttl = customTTL || this.ttl;
+    const expiry = Date.now() + ttl;
+    
+    // Remove oldest item if cache is full
+    if (this.cache.size >= this.maxSize) {
+      const firstKey = this.cache.keys().next().value;
+      this.cache.delete(firstKey);
+    }
+    
+    this.cache.set(key, {
+      value,
+      expiry
+    });
+  }
+  
+  get(key) {
+    const item = this.cache.get(key);
+    
+    if (!item) {
+      return null;
+    }
+    
+    if (Date.now() > item.expiry) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return item.value;
+  }
+  
+  has(key) {
+    return this.get(key) !== null;
+  }
+  
+  clear() {
+    this.cache.clear();
+  }
+  
+  cleanup() {
+    const now = Date.now();
+    for (const [key, item] of this.cache.entries()) {
+      if (now > item.expiry) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
+
+// Global media cache instance
+const mediaCache = new MediaCache({ maxSize: 500, ttl: 7200000 }); // 2 hours
+
+// Cleanup expired items every 30 minutes
+setInterval(() => {
+  mediaCache.cleanup();
+}, 30 * 60 * 1000);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion icon="shield" title="Security">
+    - Validate all uploaded files for type and size
+    - Scan files for malware before processing
+    - Use secure file storage with proper access controls
+    - Implement rate limiting for media uploads
+    - Sanitize filenames to prevent path traversal
+  </Accordion>
+  
+  <Accordion icon="performance" title="Performance">
+    - Compress media files before sending
+    - Use CDN for media delivery
+    - Implement caching for frequently accessed media
+    - Process media asynchronously
+    - Use streaming for large file downloads
+  </Accordion>
+  
+  <Accordion icon="database" title="Storage">
+    - Store media metadata in database
+    - Use cloud storage for scalability
+    - Implement automatic cleanup of old files
+    - Monitor storage usage and costs
+    - Use appropriate file naming conventions
+  </Accordion>
+  
+  <Accordion icon="users" title="User Experience">
+    - Show upload progress for large files
+    - Provide thumbnails for images and videos
+    - Support multiple file formats
+    - Implement media preview functionality
+    - Handle upload failures gracefully
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Group Management" icon="users" href="/examples/group-management">
+    Learn about managing WhatsApp groups
+  </Card>
+  
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Set up real-time message notifications
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/advanced/best-practices">
+    Production deployment guidelines
+  </Card>
+  
+  <Card title="Error Handling" icon="triangle-exclamation" href="/advanced/error-handling">
+    Handle media processing errors
+  </Card>
+</CardGroup>

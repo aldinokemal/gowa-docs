@@ -1,0 +1,970 @@
+---
+title: "Error Handling"
+description: "Comprehensive error handling strategies for WhatsApp API applications"
+---
+
+## Overview
+
+Robust error handling is essential for production WhatsApp API applications. This guide covers common error types, handling strategies, recovery mechanisms, and monitoring approaches to ensure your application handles failures gracefully.
+
+## Common Error Types
+
+### API Response Errors
+
+| Error Code | HTTP Status | Description | Common Causes |
+|------------|-------------|-------------|---------------|
+| `INVALID_PHONE_NUMBER` | 400 | Phone number format invalid | Missing country code, invalid format |
+| `MESSAGE_TOO_LONG` | 400 | Message exceeds character limit | Text > 4096 characters |
+| `MEDIA_TOO_LARGE` | 413 | Media file exceeds size limit | File > 16MB |
+| `RATE_LIMIT_EXCEEDED` | 429 | Too many requests | Exceeding API limits |
+| `UNAUTHORIZED` | 401 | Authentication failed | Invalid credentials, expired session |
+| `SESSION_NOT_FOUND` | 404 | No active session | Device not connected |
+| `GROUP_NOT_FOUND` | 404 | Group doesn't exist | Invalid group ID |
+| `PARTICIPANT_NOT_FOUND` | 404 | User not in group | Invalid participant |
+| `INSUFFICIENT_PERMISSIONS` | 403 | Not authorized | Not group admin |
+| `INTERNAL_SERVER_ERROR` | 500 | Server error | API service issues |
+
+### Network Errors
+
+```javascript
+class NetworkError extends Error {
+  constructor(message, code, response) {
+    super(message);
+    this.name = 'NetworkError';
+    this.code = code;
+    this.response = response;
+    this.isRetryable = this.determineRetryability();
+  }
+  
+  determineRetryability() {
+    // Network errors that can be retried
+    const retryableCodes = [
+      'ECONNRESET',
+      'ETIMEDOUT', 
+      'ECONNREFUSED',
+      'ENETUNREACH'
+    ];
+    
+    const retryableStatuses = [408, 429, 500, 502, 503, 504];
+    
+    return retryableCodes.includes(this.code) || 
+           (this.response && retryableStatuses.includes(this.response.status));
+  }
+}
+```
+
+### Session Errors
+
+```javascript
+class SessionError extends Error {
+  constructor(message, type) {
+    super(message);
+    this.name = 'SessionError';
+    this.type = type; // 'disconnected', 'expired', 'invalid'
+    this.requiresReauth = this.type === 'expired' || this.type === 'invalid';
+  }
+}
+```
+
+## Error Detection and Classification
+
+### API Error Parser
+
+```javascript
+class APIErrorParser {
+  static parseResponse(response, responseData) {
+    if (response.ok && responseData.code === 'SUCCESS') {
+      return null; // No error
+    }
+    
+    const error = {
+      httpStatus: response.status,
+      apiCode: responseData.code,
+      message: responseData.message,
+      details: responseData.details || {},
+      timestamp: new Date().toISOString(),
+      endpoint: response.url
+    };
+    
+    // Classify error type
+    error.type = this.classifyError(error);
+    error.severity = this.determineSeverity(error);
+    error.isRetryable = this.isRetryable(error);
+    
+    return error;
+  }
+  
+  static classifyError(error) {
+    const { httpStatus, apiCode } = error;
+    
+    if (httpStatus >= 500) return 'server_error';
+    if (httpStatus === 429) return 'rate_limit';
+    if (httpStatus === 401 || httpStatus === 403) return 'auth_error';
+    if (httpStatus === 404) return 'not_found';
+    if (httpStatus >= 400) return 'client_error';
+    if (apiCode && apiCode !== 'SUCCESS') return 'api_error';
+    
+    return 'unknown';
+  }
+  
+  static determineSeverity(error) {
+    const criticalErrors = [
+      'SESSION_NOT_FOUND',
+      'UNAUTHORIZED',
+      'INTERNAL_SERVER_ERROR'
+    ];
+    
+    const warningErrors = [
+      'RATE_LIMIT_EXCEEDED',
+      'INVALID_PHONE_NUMBER',
+      'MESSAGE_TOO_LONG'
+    ];
+    
+    if (criticalErrors.includes(error.apiCode)) return 'critical';
+    if (warningErrors.includes(error.apiCode)) return 'warning';
+    if (error.httpStatus >= 500) return 'critical';
+    if (error.httpStatus >= 400) return 'warning';
+    
+    return 'info';
+  }
+  
+  static isRetryable(error) {
+    const retryableCodes = [
+      'RATE_LIMIT_EXCEEDED',
+      'INTERNAL_SERVER_ERROR',
+      'SERVICE_UNAVAILABLE'
+    ];
+    
+    const retryableStatuses = [429, 500, 502, 503, 504];
+    
+    return retryableCodes.includes(error.apiCode) ||
+           retryableStatuses.includes(error.httpStatus);
+  }
+}
+```
+
+## Error Handling Strategies
+
+### Basic Error Handler
+
+```javascript
+class ErrorHandler {
+  constructor(options = {}) {
+    this.maxRetries = options.maxRetries || 3;
+    this.baseDelay = options.baseDelay || 1000;
+    this.logger = options.logger || console;
+    this.alerting = options.alerting;
+  }
+  
+  async handleAPICall(apiCall, context = {}) {
+    let lastError;
+    
+    for (let attempt = 1; attempt <= this.maxRetries + 1; attempt++) {
+      try {
+        const result = await apiCall();
+        
+        // Log successful recovery if this wasn't the first attempt
+        if (attempt > 1) {
+          this.logger.info(`API call succeeded after ${attempt - 1} retries`, context);
+        }
+        
+        return result;
+      } catch (error) {
+        lastError = error;
+        
+        // Parse and classify the error
+        const parsedError = this.parseError(error, context);
+        
+        // Log the error
+        this.logError(parsedError, attempt, context);
+        
+        // Determine if we should retry
+        if (attempt <= this.maxRetries && this.shouldRetry(parsedError)) {
+          const delay = this.calculateDelay(attempt, parsedError);
+          this.logger.warn(`Retrying in ${delay}ms (attempt ${attempt}/${this.maxRetries})`, {
+            ...context,
+            error: parsedError.message
+          });
+          
+          await this.sleep(delay);
+          continue;
+        }
+        
+        // Handle non-retryable or final error
+        await this.handleFinalError(parsedError, context);
+        throw parsedError;
+      }
+    }
+  }
+  
+  parseError(error, context) {
+    if (error.response) {
+      // HTTP response error
+      return {
+        type: 'http_error',
+        status: error.response.status,
+        message: error.message,
+        data: error.response.data,
+        isRetryable: this.isHTTPRetryable(error.response.status),
+        context
+      };
+    } else if (error.code) {
+      // Network error
+      return {
+        type: 'network_error',
+        code: error.code,
+        message: error.message,
+        isRetryable: this.isNetworkRetryable(error.code),
+        context
+      };
+    } else {
+      // Application error
+      return {
+        type: 'application_error',
+        message: error.message,
+        stack: error.stack,
+        isRetryable: false,
+        context
+      };
+    }
+  }
+  
+  shouldRetry(error) {
+    return error.isRetryable;
+  }
+  
+  calculateDelay(attempt, error) {
+    // Exponential backoff with jitter
+    let delay = this.baseDelay * Math.pow(2, attempt - 1);
+    
+    // Add jitter (±25%)
+    const jitter = delay * 0.25 * (Math.random() * 2 - 1);
+    delay += jitter;
+    
+    // Cap at 30 seconds
+    return Math.min(delay, 30000);
+  }
+  
+  logError(error, attempt, context) {
+    const logData = {
+      ...context,
+      error: {
+        type: error.type,
+        message: error.message,
+        status: error.status,
+        code: error.code
+      },
+      attempt,
+      timestamp: new Date().toISOString()
+    };
+    
+    if (attempt === 1) {
+      this.logger.error('API call failed', logData);
+    } else {
+      this.logger.warn('Retry failed', logData);
+    }
+  }
+  
+  async handleFinalError(error, context) {
+    // Send alerts for critical errors
+    if (this.alerting && this.isCriticalError(error)) {
+      await this.alerting.sendAlert('Critical API Error', {
+        error: error.message,
+        context,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Log final failure
+    this.logger.error('API call failed permanently', {
+      ...context,
+      error: error.message,
+      type: error.type,
+      attempts: this.maxRetries + 1
+    });
+  }
+  
+  isCriticalError(error) {
+    const criticalTypes = ['session_error', 'auth_error'];
+    const criticalStatuses = [500, 503];
+    
+    return criticalTypes.includes(error.type) ||
+           criticalStatuses.includes(error.status);
+  }
+  
+  isHTTPRetryable(status) {
+    return [429, 500, 502, 503, 504].includes(status);
+  }
+  
+  isNetworkRetryable(code) {
+    return ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(code);
+  }
+  
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+```
+
+### WhatsApp API Client with Error Handling
+
+```javascript
+class WhatsAppAPIClient {
+  constructor(apiUrl, options = {}) {
+    this.apiUrl = apiUrl;
+    this.errorHandler = new ErrorHandler(options.errorHandler);
+    this.sessionManager = options.sessionManager;
+  }
+  
+  async sendMessage(phone, message, options = {}) {
+    const context = {
+      operation: 'send_message',
+      phone,
+      messageLength: message.length
+    };
+    
+    return await this.errorHandler.handleAPICall(async () => {
+      // Check session before sending
+      await this.ensureSession();
+      
+      const response = await fetch(`${this.apiUrl}/send/message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          phone,
+          message,
+          ...options
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok || result.code !== 'SUCCESS') {
+        const error = APIErrorParser.parseResponse(response, result);
+        if (error) {
+          throw new APIError(error.message, error);
+        }
+      }
+      
+      return result;
+    }, context);
+  }
+  
+  async ensureSession() {
+    if (this.sessionManager) {
+      const isConnected = await this.sessionManager.isConnected();
+      if (!isConnected) {
+        throw new SessionError('Session not connected', 'disconnected');
+      }
+    }
+  }
+  
+  async createGroup(title, participants, options = {}) {
+    const context = {
+      operation: 'create_group',
+      title,
+      participantCount: participants.length
+    };
+    
+    return await this.errorHandler.handleAPICall(async () => {
+      // Validate participants first
+      const validParticipants = await this.validateParticipants(participants);
+      
+      const response = await fetch(`${this.apiUrl}/group`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title,
+          participants: validParticipants,
+          ...options
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok || result.code !== 'SUCCESS') {
+        const error = APIErrorParser.parseResponse(response, result);
+        if (error) {
+          throw new APIError(error.message, error);
+        }
+      }
+      
+      return result;
+    }, context);
+  }
+  
+  async validateParticipants(participants) {
+    const validParticipants = [];
+    
+    for (const phone of participants) {
+      try {
+        const isValid = await this.checkPhoneNumber(phone);
+        if (isValid) {
+          validParticipants.push(phone);
+        }
+      } catch (error) {
+        console.warn(`Failed to validate ${phone}:`, error.message);
+      }
+    }
+    
+    if (validParticipants.length === 0) {
+      throw new ValidationError('No valid participants provided');
+    }
+    
+    return validParticipants;
+  }
+  
+  async checkPhoneNumber(phone) {
+    const response = await fetch(`${this.apiUrl}/user/check?phone=${phone}`);
+    const result = await response.json();
+    
+    return result.code === 'SUCCESS' && result.results.is_on_whatsapp;
+  }
+}
+
+class APIError extends Error {
+  constructor(message, errorData) {
+    super(message);
+    this.name = 'APIError';
+    this.data = errorData;
+  }
+}
+
+class ValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ValidationError';
+  }
+}
+```
+
+## Circuit Breaker Pattern
+
+```javascript
+class CircuitBreaker {
+  constructor(options = {}) {
+    this.failureThreshold = options.failureThreshold || 5;
+    this.resetTimeout = options.resetTimeout || 60000; // 1 minute
+    this.monitoringPeriod = options.monitoringPeriod || 60000; // 1 minute
+    
+    this.state = 'CLOSED'; // CLOSED, OPEN, HALF_OPEN
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.nextAttempt = Date.now();
+    
+    this.successCount = 0;
+    this.stats = {
+      requests: 0,
+      failures: 0,
+      successes: 0,
+      timeouts: 0
+    };
+  }
+  
+  async execute(operation, context = {}) {
+    this.stats.requests++;
+    
+    if (this.state === 'OPEN') {
+      if (Date.now() < this.nextAttempt) {
+        const error = new Error('Circuit breaker is OPEN');
+        error.type = 'circuit_breaker_open';
+        throw error;
+      } else {
+        this.state = 'HALF_OPEN';
+      }
+    }
+    
+    try {
+      const result = await operation();
+      this.onSuccess();
+      return result;
+    } catch (error) {
+      this.onFailure(error);
+      throw error;
+    }
+  }
+  
+  onSuccess() {
+    this.stats.successes++;
+    this.failureCount = 0;
+    
+    if (this.state === 'HALF_OPEN') {
+      this.state = 'CLOSED';
+      console.log('Circuit breaker reset to CLOSED');
+    }
+  }
+  
+  onFailure(error) {
+    this.stats.failures++;
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+    
+    if (this.failureCount >= this.failureThreshold) {
+      this.state = 'OPEN';
+      this.nextAttempt = Date.now() + this.resetTimeout;
+      console.log(`Circuit breaker opened after ${this.failureCount} failures`);
+    }
+  }
+  
+  getStats() {
+    return {
+      state: this.state,
+      failureCount: this.failureCount,
+      stats: this.stats,
+      lastFailureTime: this.lastFailureTime,
+      nextAttempt: this.nextAttempt
+    };
+  }
+  
+  reset() {
+    this.state = 'CLOSED';
+    this.failureCount = 0;
+    this.lastFailureTime = null;
+    this.nextAttempt = Date.now();
+  }
+}
+
+// Usage with WhatsApp API
+const circuitBreaker = new CircuitBreaker({
+  failureThreshold: 3,
+  resetTimeout: 30000
+});
+
+async function sendMessageWithCircuitBreaker(phone, message) {
+  return await circuitBreaker.execute(async () => {
+    return await whatsappClient.sendMessage(phone, message);
+  }, { operation: 'send_message', phone });
+}
+```
+
+## Graceful Degradation
+
+```javascript
+class GracefulDegradationHandler {
+  constructor(primaryAPI, fallbackAPI = null) {
+    this.primaryAPI = primaryAPI;
+    this.fallbackAPI = fallbackAPI;
+    this.primaryHealthy = true;
+    this.fallbackMode = false;
+  }
+  
+  async sendMessage(phone, message, options = {}) {
+    if (this.fallbackMode && this.fallbackAPI) {
+      return await this.sendWithFallback(phone, message, options);
+    }
+    
+    try {
+      const result = await this.primaryAPI.sendMessage(phone, message, options);
+      this.primaryHealthy = true;
+      return result;
+    } catch (error) {
+      if (this.shouldFallback(error) && this.fallbackAPI) {
+        console.warn('Primary API failed, switching to fallback mode');
+        this.fallbackMode = true;
+        return await this.sendWithFallback(phone, message, options);
+      }
+      
+      // If no fallback available, try degraded functionality
+      return await this.degradedSend(phone, message, options, error);
+    }
+  }
+  
+  async sendWithFallback(phone, message, options) {
+    try {
+      const result = await this.fallbackAPI.sendMessage(phone, message, options);
+      return { ...result, source: 'fallback' };
+    } catch (fallbackError) {
+      // Both APIs failed, try degraded mode
+      return await this.degradedSend(phone, message, options, fallbackError);
+    }
+  }
+  
+  async degradedSend(phone, message, options, originalError) {
+    // Implement degraded functionality
+    // For example: queue for later delivery, send via alternative channel, etc.
+    
+    console.error('All APIs failed, queueing message for later delivery');
+    
+    // Queue message for retry
+    await this.queueForRetry({
+      phone,
+      message,
+      options,
+      error: originalError.message,
+      timestamp: new Date().toISOString()
+    });
+    
+    return {
+      code: 'QUEUED',
+      message: 'Message queued for delivery when service recovers',
+      queued: true
+    };
+  }
+  
+  shouldFallback(error) {
+    // Determine if error warrants fallback
+    const fallbackErrors = [
+      'INTERNAL_SERVER_ERROR',
+      'SERVICE_UNAVAILABLE',
+      'RATE_LIMIT_EXCEEDED'
+    ];
+    
+    return fallbackErrors.includes(error.data?.apiCode) ||
+           error.data?.status >= 500;
+  }
+  
+  async queueForRetry(messageData) {
+    // Implementation depends on your queuing system
+    // Redis, database, message queue, etc.
+    console.log('Queuing message:', messageData);
+  }
+  
+  async checkHealth() {
+    try {
+      await this.primaryAPI.checkSession();
+      this.primaryHealthy = true;
+      
+      if (this.fallbackMode) {
+        console.log('Primary API recovered, switching back');
+        this.fallbackMode = false;
+      }
+    } catch (error) {
+      this.primaryHealthy = false;
+      console.warn('Primary API health check failed:', error.message);
+    }
+  }
+}
+```
+
+## Error Monitoring and Alerting
+
+```javascript
+class ErrorMonitor {
+  constructor(options = {}) {
+    this.alertThresholds = options.alertThresholds || {
+      errorRate: 0.1, // 10% error rate
+      criticalErrors: 5, // 5 critical errors in window
+      timeWindow: 300000 // 5 minutes
+    };
+    
+    this.metrics = {
+      totalRequests: 0,
+      totalErrors: 0,
+      criticalErrors: 0,
+      errorsByType: new Map(),
+      recentErrors: []
+    };
+    
+    this.alerting = options.alerting;
+    this.startTime = Date.now();
+  }
+  
+  recordError(error, context = {}) {
+    this.metrics.totalErrors++;
+    
+    // Classify error severity
+    if (this.isCriticalError(error)) {
+      this.metrics.criticalErrors++;
+    }
+    
+    // Track error types
+    const errorType = error.type || 'unknown';
+    this.metrics.errorsByType.set(
+      errorType,
+      (this.metrics.errorsByType.get(errorType) || 0) + 1
+    );
+    
+    // Store recent error
+    this.metrics.recentErrors.push({
+      error: {
+        type: error.type,
+        message: error.message,
+        status: error.status
+      },
+      context,
+      timestamp: Date.now()
+    });
+    
+    // Keep only recent errors (last 1000)
+    if (this.metrics.recentErrors.length > 1000) {
+      this.metrics.recentErrors = this.metrics.recentErrors.slice(-1000);
+    }
+    
+    this.checkAlertThresholds();
+  }
+  
+  recordRequest() {
+    this.metrics.totalRequests++;
+  }
+  
+  checkAlertThresholds() {
+    const now = Date.now();
+    const windowStart = now - this.alertThresholds.timeWindow;
+    
+    // Get errors in current window
+    const recentErrors = this.metrics.recentErrors.filter(
+      e => e.timestamp > windowStart
+    );
+    
+    const criticalErrors = recentErrors.filter(
+      e => this.isCriticalError(e.error)
+    );
+    
+    // Check critical error threshold
+    if (criticalErrors.length >= this.alertThresholds.criticalErrors) {
+      this.sendAlert('critical_errors', {
+        count: criticalErrors.length,
+        threshold: this.alertThresholds.criticalErrors,
+        timeWindow: this.alertThresholds.timeWindow / 1000,
+        errors: criticalErrors.slice(-5) // Last 5 critical errors
+      });
+    }
+    
+    // Check error rate threshold
+    if (this.metrics.totalRequests > 0) {
+      const errorRate = this.metrics.totalErrors / this.metrics.totalRequests;
+      
+      if (errorRate >= this.alertThresholds.errorRate) {
+        this.sendAlert('high_error_rate', {
+          errorRate: errorRate.toFixed(3),
+          threshold: this.alertThresholds.errorRate,
+          totalRequests: this.metrics.totalRequests,
+          totalErrors: this.metrics.totalErrors
+        });
+      }
+    }
+  }
+  
+  isCriticalError(error) {
+    const criticalTypes = ['session_error', 'auth_error', 'server_error'];
+    const criticalStatuses = [500, 503];
+    
+    return criticalTypes.includes(error.type) ||
+           criticalStatuses.includes(error.status);
+  }
+  
+  async sendAlert(type, data) {
+    if (this.alerting) {
+      await this.alerting.sendAlert(type, {
+        ...data,
+        timestamp: new Date().toISOString(),
+        uptime: Date.now() - this.startTime
+      });
+    }
+  }
+  
+  getMetrics() {
+    const uptime = Date.now() - this.startTime;
+    const errorRate = this.metrics.totalRequests > 0 ? 
+      this.metrics.totalErrors / this.metrics.totalRequests : 0;
+    
+    return {
+      uptime,
+      totalRequests: this.metrics.totalRequests,
+      totalErrors: this.metrics.totalErrors,
+      criticalErrors: this.metrics.criticalErrors,
+      errorRate: errorRate.toFixed(3),
+      errorsByType: Object.fromEntries(this.metrics.errorsByType),
+      recentErrorsCount: this.metrics.recentErrors.length
+    };
+  }
+  
+  generateReport() {
+    const metrics = this.getMetrics();
+    const uptime = Math.round(metrics.uptime / 1000);
+    
+    console.log('=== Error Monitor Report ===');
+    console.log(`Uptime: ${uptime} seconds`);
+    console.log(`Total Requests: ${metrics.totalRequests}`);
+    console.log(`Total Errors: ${metrics.totalErrors}`);
+    console.log(`Critical Errors: ${metrics.criticalErrors}`);
+    console.log(`Error Rate: ${metrics.errorRate}`);
+    console.log('Errors by Type:', metrics.errorsByType);
+    console.log('============================');
+    
+    return metrics;
+  }
+}
+
+// Integration example
+const errorMonitor = new ErrorMonitor({
+  alertThresholds: {
+    errorRate: 0.05, // 5%
+    criticalErrors: 3,
+    timeWindow: 300000 // 5 minutes
+  },
+  alerting: {
+    async sendAlert(type, data) {
+      console.log(`🚨 ALERT [${type}]:`, data);
+      // Send to Slack, email, PagerDuty, etc.
+    }
+  }
+});
+
+// Use with API client
+class MonitoredWhatsAppClient extends WhatsAppAPIClient {
+  async sendMessage(phone, message, options = {}) {
+    errorMonitor.recordRequest();
+    
+    try {
+      const result = await super.sendMessage(phone, message, options);
+      return result;
+    } catch (error) {
+      errorMonitor.recordError(error, {
+        operation: 'send_message',
+        phone,
+        messageLength: message.length
+      });
+      throw error;
+    }
+  }
+}
+```
+
+## Recovery Strategies
+
+### Automatic Recovery
+
+```javascript
+class RecoveryManager {
+  constructor(apiClient, options = {}) {
+    this.apiClient = apiClient;
+    this.recoveryStrategies = [
+      this.sessionRecovery,
+      this.circuitBreakerReset,
+      this.configReload
+    ];
+    this.maxRecoveryAttempts = options.maxRecoveryAttempts || 3;
+  }
+  
+  async initiateRecovery(error, context) {
+    console.log('🔧 Initiating recovery process for error:', error.message);
+    
+    for (const [index, strategy] of this.recoveryStrategies.entries()) {
+      try {
+        console.log(`Attempting recovery strategy ${index + 1}/${this.recoveryStrategies.length}`);
+        
+        const success = await strategy.call(this, error, context);
+        
+        if (success) {
+          console.log('✅ Recovery successful');
+          return true;
+        }
+      } catch (recoveryError) {
+        console.error(`Recovery strategy ${index + 1} failed:`, recoveryError);
+      }
+    }
+    
+    console.error('❌ All recovery strategies failed');
+    return false;
+  }
+  
+  async sessionRecovery(error, context) {
+    if (error.type === 'session_error' || error.data?.apiCode === 'SESSION_NOT_FOUND') {
+      console.log('Attempting session recovery...');
+      
+      try {
+        // Try to reconnect
+        await this.apiClient.reconnect();
+        
+        // Verify session is working
+        await this.apiClient.checkSession();
+        
+        return true;
+      } catch (sessionError) {
+        console.error('Session recovery failed:', sessionError);
+        return false;
+      }
+    }
+    
+    return false;
+  }
+  
+  async circuitBreakerReset(error, context) {
+    if (error.type === 'circuit_breaker_open') {
+      console.log('Resetting circuit breaker...');
+      
+      // Reset circuit breaker
+      if (this.apiClient.circuitBreaker) {
+        this.apiClient.circuitBreaker.reset();
+        return true;
+      }
+    }
+    
+    return false;
+  }
+  
+  async configReload(error, context) {
+    console.log('Reloading configuration...');
+    
+    try {
+      // Reload API configuration
+      await this.apiClient.reloadConfig();
+      return true;
+    } catch (configError) {
+      console.error('Config reload failed:', configError);
+      return false;
+    }
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion icon="shield" title="Error Prevention">
+    - Validate all inputs before API calls
+    - Implement proper authentication handling
+    - Use type checking and schema validation
+    - Monitor API usage patterns
+    - Set up proper logging from the start
+  </Accordion>
+  
+  <Accordion icon="sync" title="Retry Logic">
+    - Use exponential backoff with jitter
+    - Implement maximum retry limits
+    - Only retry retryable errors
+    - Add circuit breakers for failing services
+    - Queue failed operations for manual review
+  </Accordion>
+  
+  <Accordion icon="bell" title="Monitoring">
+    - Track error rates and patterns
+    - Set up alerting for critical errors
+    - Monitor session health continuously
+    - Log all errors with context
+    - Create error dashboards for visibility
+  </Accordion>
+  
+  <Accordion icon="database" title="Data Integrity">
+    - Use transactions for critical operations
+    - Implement idempotency for API calls
+    - Store failed operations for replay
+    - Validate data consistency regularly
+    - Backup critical configuration data
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Rate Limiting" icon="gauge" href="/advanced/rate-limiting">
+    Handle API rate limits effectively
+  </Card>
+  
+  <Card title="Best Practices" icon="star" href="/advanced/best-practices">
+    Production deployment guidelines
+  </Card>
+  
+  <Card title="Sessions" icon="database" href="/concepts/sessions">
+    Understand session management
+  </Card>
+  
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Handle webhook-related errors
+  </Card>
+</CardGroup>
