@@ -140,5 +140,6 @@
     "og:title": "WhatsApp API MultiDevice Documentation",
     "og:description": "Complete documentation for WhatsApp API MultiDevice - Send and receive WhatsApp messages programmatically",
     "og:image": "/images/hero-light.png"
-  }
+  },
+  "description": "GOWA official documentation"
 }
