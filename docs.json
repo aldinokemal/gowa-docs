@@ -109,8 +109,8 @@
     ],
     "primary": {
       "type": "button",
-      "label": "Try API",
-      "href": "http://localhost:3000"
+      "label": "Try GOWA",
+      "href": "https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest"
     }
   },
   "contextual": {
