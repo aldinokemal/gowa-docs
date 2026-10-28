@@ -75,7 +75,7 @@
             ]
           },
           {
-            "group": "SDKs & Libraries",
+            "group": "Client Examples",
             "pages": [
               "api-reference/sdks/go",
               "api-reference/sdks/javascript",
