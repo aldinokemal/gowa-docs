@@ -3,9 +3,9 @@
   "theme": "mint",
   "name": "WhatsApp API MultiDevice",
   "colors": {
-    "primary": "#25D366",
-    "light": "#128C7E",
-    "dark": "#075E54"
+    "primary": "#277C99",
+    "light": "#6FAFC8",
+    "dark": "#277C99"
   },
   "favicon": "/favicon.svg",
   "navigation": {
@@ -141,5 +141,11 @@
     "og:description": "Complete documentation for WhatsApp API MultiDevice - Send and receive WhatsApp messages programmatically",
     "og:image": "/images/hero-light.png"
   },
-  "description": "GOWA official documentation"
+  "description": "GOWA official documentation",
+  "background": {
+    "color": {
+      "light": "#EFF4F6",
+      "dark": "#0B1318"
+    }
+  }
 }
