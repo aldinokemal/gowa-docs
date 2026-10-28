@@ -1,0 +1,178 @@
+---
+title: "Configuration Reference"
+description: "Every GOWA environment variable and command-line flag, with defaults."
+sidebarTitle: "Configuration"
+icon: "sliders"
+---
+
+GOWA reads configuration from three places:
+
+- **Command-line flags** on `whatsapp rest` (run `./whatsapp rest --help` for the full list).
+- **Environment variables**.
+- A **`.env` file** in the working directory (`src/.env` when running from source; copy `src/.env.example`).
+
+The `.env` file only fills in variables that are not already set in the environment.
+
+<Warning>
+In the current code, environment variables (including `.env`) are applied **after** flags are parsed, so a variable that is set overrides the matching flag. The MCP OAuth settings are the exception: their flags win. The upstream README states that flags always take priority; until that is reconciled, set each option in one place only.
+</Warning>
+
+Booleans accept `true`/`false`. Durations use Go syntax (`30s`, `5m`, `3h`). List values are comma-separated.
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `whatsapp rest` | Start the REST API, dashboard, WebSocket and MCP endpoint. Required since v6; a bare `whatsapp` does not start the server. |
+| `whatsapp version` | Print the version and exit. |
+| `whatsapp --help` | List commands and flags. |
+
+## Server
+
+| Variable | Flag | Default | Description |
+|---|---|---|---|
+| `APP_PORT` | `--port`, `-p` | `3000` | HTTP port. |
+| `APP_HOST` | `--host`, `-H` | `0.0.0.0` | Bind address. |
+| `APP_DEBUG` | `--debug`, `-d` | `false` | Verbose logging. |
+| `APP_OS` | `--os` | `GOWA` | Device name shown in WhatsApp's **Linked devices** list. |
+| `APP_BASIC_AUTH` | `--basic-auth`, `-b` | — | `user:pass` pairs, comma-separated. Empty disables auth. |
+| `APP_BASE_PATH` | `--base-path` | — | Serve under a sub-path, e.g. `/gowa`. `/health` stays at the root. |
+| `APP_TRUSTED_PROXIES` | `--trusted-proxies` | — | Proxy IP ranges whose forwarded headers are trusted, e.g. `10.0.0.0/8`. |
+| `APP_CORS_ALLOWED_ORIGINS` | `--cors-allowed-origins` | — (any origin) | Origins allowed for browser access. |
+
+## Dashboard
+
+| Variable | Flag | Default | Description |
+|---|---|---|---|
+| `APP_UI_ENABLED` | `--ui-enabled` | `true` | Serve the gowa-ui dashboard at `/`. |
+| `APP_UI_AUTO_UPDATE` | `--ui-auto-update` | `true` | Download the latest dashboard release at startup and periodically. Disable for air-gapped hosts with a pre-seeded `storages/ui` cache. |
+| `APP_UI_REPO` | `--ui-repo` | `aldinokemal/gowa-ui` | GitHub repository to download from. |
+| `APP_UI_ASSET_NAME` | `--ui-asset-name` | `gowa-ui.html` | Release asset to download. |
+| `APP_UI_UPDATE_INTERVAL` | `--ui-update-interval` | `3h` | Interval between update checks. |
+| `APP_UI_GITHUB_TOKEN` | — | — | GitHub token for a higher API rate limit. |
+| `APP_UI_ASSET_SHA256` | `--ui-asset-sha256` | — | Only serve a dashboard with this SHA-256. |
+
+## MCP
+
+| Variable | Flag | Default | Description |
+|---|---|---|---|
+| `MCP_ENABLED` | `--mcp-enabled` | `true` | Serve the MCP endpoint at `/mcp`. |
+| `MCP_OAUTH_ENABLED` | `--mcp-oauth-enabled` | `false` | Enable OAuth 2.1 for `/mcp`. Requires `APP_BASIC_AUTH`. |
+| `MCP_OAUTH_ISSUER_URL` | `--mcp-oauth-issuer-url` | — | Public HTTPS issuer URL. Required with OAuth. |
+| `MCP_OAUTH_RESOURCE_URL` | `--mcp-oauth-resource-url` | issuer + base path + `/mcp` | Canonical public MCP URL. |
+| `MCP_OAUTH_DB_URI` | `--mcp-oauth-db-uri` | `file:storages/oauth.db` | SQLite store for OAuth clients and token hashes. |
+
+See [MCP server](/integrations/mcp).
+
+## Storage
+
+| Variable | Flag | Default | Description |
+|---|---|---|---|
+| `DB_URI` | `--db-uri` | `file:storages/whatsapp.db` | Session store: SQLite (`file:...`) or PostgreSQL (`postgres://...`). |
+| `DB_KEYS_URI` | `--db-keys-uri` | same as `DB_URI` | Optional separate store for the encryption key cache. Avoid in-memory stores in production. |
+| `CHAT_STORAGE_MAX_OPEN_CONNS` | — | `5` | Max SQLite connections for chat storage. Raise if sends time out under heavy inbound load. |
+
+Chat storage (chats, messages, schedules) always lives in `storages/chatstorage.db` and is not configurable.
+
+## WhatsApp behavior
+
+| Variable | Flag | Default | Description |
+|---|---|---|---|
+| `WHATSAPP_AUTO_REPLY` | `--autoreply` | — | Fixed reply sent to every incoming message. |
+| `WHATSAPP_AUTO_MARK_READ` | `--auto-mark-read` | `false` | Mark incoming messages read. |
+| `WHATSAPP_AUTO_DOWNLOAD_MEDIA` | `--auto-download-media` | `true` | Save incoming media to `statics/media`. |
+| `WHATSAPP_IGNORE_STATUS_MEDIA` | `--ignore-status-media` | `false` | Skip downloading status media. |
+| `WHATSAPP_AUTO_REJECT_CALL` | `--auto-reject-call` | `false` | Reject incoming calls. |
+| `WHATSAPP_ACCOUNT_VALIDATION` | `--account-validation` | `true` | Check recipients are on WhatsApp before sending. |
+| `WHATSAPP_PRESENCE_ON_CONNECT` | `--presence-on-connect` | `unavailable` | Presence sent on connect: `available`, `unavailable` or `none`. |
+| `WHATSAPP_PRESENCE_PULSE_ENABLED` | `--presence-pulse-enabled` | `true` | Periodically go online briefly, then offline again. |
+| `WHATSAPP_PRESENCE_PULSE_INTERVAL` | `--presence-pulse-interval` | `24h` | Time between pulses. |
+| `WHATSAPP_PRESENCE_PULSE_DURATION` | `--presence-pulse-duration` | `5m` | How long each pulse stays online. |
+| `WHATSAPP_PROXY` | `--whatsapp-proxy` | — | Proxy for the WhatsApp connection: `socks5://`, `http://` or `https://`. `HTTP_PROXY` does not apply to it. |
+
+## Webhooks
+
+| Variable | Flag | Default | Description |
+|---|---|---|---|
+| `WHATSAPP_WEBHOOK` | `--webhook`, `-w` | — | Webhook URL(s), comma-separated. |
+| `WHATSAPP_WEBHOOK_SECRET` | `--webhook-secret` | `secret` | HMAC key for `X-Hub-Signature-256`. Change it. |
+| `WHATSAPP_WEBHOOK_INSECURE_SKIP_VERIFY` | `--webhook-insecure-skip-verify` | `false` | Skip TLS verification (development only). |
+| `WHATSAPP_WEBHOOK_EVENTS` | `--webhook-events` | — (all) | Event allowlist, e.g. `message,message.ack`. |
+| `WHATSAPP_WEBHOOK_IGNORE_JIDS` | `--webhook-ignore-jids` | — | JIDs or wildcards (`@g.us`, `@s.whatsapp.net`, `@lid`) not forwarded. |
+| `WHATSAPP_WEBHOOK_DEVICE_MERGE_GLOBAL` | `--webhook-device-merge-global` | `false` | Send a device's events to the global URLs as well as its own webhook. |
+
+See [Webhooks](/concepts/webhooks).
+
+## Chatwoot
+
+| Variable | Flag | Default |
+|---|---|---|
+| `CHATWOOT_ENABLED` | `--chatwoot-enabled` | `false` |
+| `CHATWOOT_URL` | — | — |
+| `CHATWOOT_API_TOKEN` | — | — |
+| `CHATWOOT_ACCOUNT_ID` | — | — |
+| `CHATWOOT_INBOX_ID` | — | — |
+| `CHATWOOT_DEVICE_ID` | `--chatwoot-device-id` | — |
+| `CHATWOOT_ALLOWED_HOSTS` | `--chatwoot-allowed-hosts` | — |
+| `CHATWOOT_IMPORT_MESSAGES` | `--chatwoot-import-messages` | `false` |
+| `CHATWOOT_DAYS_LIMIT_IMPORT_MESSAGES` | `--chatwoot-days-limit-import-messages` | `3` |
+| `CHATWOOT_IMPORT_DB_URI` | `--chatwoot-import-db-uri` | — |
+| `CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE` | `--chatwoot-import-placeholder-media-message` | `true` |
+| `CHATWOOT_IMPORT_MEDIA_WITH_REST` | `--chatwoot-import-media-with-rest` | `false` |
+| `CHATWOOT_AUTO_CREATE` | `--chatwoot-auto-create` | `false` |
+| `CHATWOOT_INBOX_NAME` | `--chatwoot-inbox-name` | `WhatsApp` |
+| `CHATWOOT_WEBHOOK_URL` | `--chatwoot-webhook-url` | — |
+| `CHATWOOT_WEBHOOK_SECRET` | `--chatwoot-webhook-secret` | — |
+| `CHATWOOT_WEBHOOK_SIGNATURE_TOLERANCE` | `--chatwoot-webhook-signature-tolerance` | `5m` |
+| `CHATWOOT_REOPEN_CONVERSATION` | `--chatwoot-reopen-conversation` | `true` |
+| `CHATWOOT_CONVERSATION_PENDING` | `--chatwoot-conversation-pending` | `false` |
+| `CHATWOOT_IGNORE_JIDS` | `--chatwoot-ignore-jids` | — |
+| `CHATWOOT_SIGN_MSG` | `--chatwoot-sign-msg` | `false` |
+| `CHATWOOT_SIGN_DELIMITER` | `--chatwoot-sign-delimiter` | `\n\n` |
+| `CHATWOOT_FORWARD_EDITS` | `--chatwoot-forward-edits` | `true` |
+| `CHATWOOT_FORWARD_DELETES` | `--chatwoot-forward-deletes` | `true` |
+| `CHATWOOT_MESSAGE_READ` | `--chatwoot-message-read` | `false` |
+| `CHATWOOT_MESSAGE_DELETE` | `--chatwoot-message-delete` | `false` |
+
+Descriptions are in [Chatwoot integration](/integrations/chatwoot#configuration).
+
+## Fixed limits
+
+These are compiled in and cannot be changed by configuration:
+
+| Limit | Value |
+|---|---|
+| Image upload | 20 MB |
+| Document upload | 50 MB |
+| Video upload and HTTP request body | 100 MB |
+| Incoming media download | 500 MB |
+| Request timeout | 45 s (`504 GATEWAY_TIMEOUT`) |
+| Webhook delivery | 10 s per attempt, 5 attempts |
+
+## Not used
+
+`src/.env.example` lists `WHATSAPP_WEBHOOK_INCLUDE_OUTGOING` and `WHATSAPP_CHAT_STORAGE`, but the current code does not read either. Setting them has no effect.
+
+## Example
+
+```bash .env
+APP_PORT=3000
+APP_OS=MyCompany
+APP_BASIC_AUTH=admin:a-long-random-password
+APP_TRUSTED_PROXIES=10.0.0.0/8
+DB_URI=postgres://gowa:secret@db:5432/gowa?sslmode=disable
+WHATSAPP_WEBHOOK=https://example.com/wa-hook
+WHATSAPP_WEBHOOK_SECRET=another-long-random-secret
+WHATSAPP_WEBHOOK_EVENTS=message,message.ack
+WHATSAPP_AUTO_MARK_READ=false
+```
+
+Equivalent flags:
+
+```bash
+./whatsapp rest --port=3000 --os=MyCompany \
+  --basic-auth=admin:a-long-random-password \
+  --webhook=https://example.com/wa-hook \
+  --webhook-secret=another-long-random-secret \
+  --webhook-events=message,message.ack
+```

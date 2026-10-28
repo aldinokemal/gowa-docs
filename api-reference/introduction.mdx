@@ -1,298 +1,76 @@
 ---
 title: "API Reference"
-description: "Complete reference for WhatsApp API MultiDevice endpoints"
+sidebarTitle: "Introduction"
+description: "Base URL, authentication, device selection, request formats and the response envelope for the GOWA REST API."
 ---
-
-## Overview
-
-The WhatsApp API MultiDevice provides a comprehensive REST API for sending and receiving WhatsApp messages programmatically. Built on the WhatsApp Web MultiDevice protocol, it offers reliable messaging capabilities for businesses and developers.
 
 ## Base URL
 
-All API requests should be made to:
-
-```
-http://localhost:3000
+```text
+http://<host>:3000<APP_BASE_PATH>
 ```
 
-## API Specification
-
-Our API follows OpenAPI 3.0 specification. You can view the complete API documentation in the interactive explorer below, or download the specification file.
-
-<Card
-  title="OpenAPI Specification"
-  icon="file-code"
-  href="/openapi.yml"
->
-  Download the complete OpenAPI 3.0 specification file
-</Card>
-
-## Quick Start
-
-<Steps>
-  <Step title="Start the API Server">
-    Run the WhatsApp API server on your local machine or server.
-  </Step>
-  
-  <Step title="Authenticate with WhatsApp">
-    Use QR code or pairing code to link your WhatsApp account.
-  </Step>
-  
-  <Step title="Send Your First Message">
-    Make a POST request to `/send/message` to send your first message.
-  </Step>
-</Steps>
+The default is `http://localhost:3000`. With `APP_BASE_PATH=/gowa`, every route moves under `/gowa` except `/health`.
 
 ## Authentication
 
-### WhatsApp Authentication
+When `APP_BASIC_AUTH` is set, every route requires HTTP Basic Auth, except `/health`, `/statics/*`, the Chatwoot webhook and the MCP OAuth endpoints. See [Authentication](/api-reference/authentication).
 
-Before using the API, you must authenticate with WhatsApp:
+## Device selection
 
-1. **QR Code Method**: Navigate to `/app/login` and scan the QR code
-2. **Pairing Code Method**: Use `/app/login-with-code` with your phone number
+Most routes act on one WhatsApp device. Choose it with the `X-Device-Id` header (slot ID or JID), or the `device_id` query parameter. When the server has exactly one device you may omit it; with more, it is required.
 
-### API Security
+| Device-scoped | Not device-scoped |
+| --- | --- |
+| `/app/*` (except `/app/info`), `/send/*`, `/message/*`, `/chat/*`, `/chats`, `/user/*`, `/group/*`, `/newsletter/*`, `/call/*` | `/devices*`, `/app/info`, `/health`, `/mcp`, `/chatwoot/*` |
 
-The API supports multiple authentication methods:
+See [Multi-device](/concepts/multidevice).
 
-<Tabs>
-  <Tab title="Basic Auth">
-    ```bash
-    curl -X POST http://localhost:3000/send/message \
-      -u "username:password" \
-      -H "Content-Type: application/json" \
-      -d '{"phone": "6289685028129@s.whatsapp.net", "message": "Hello"}'
-    ```
-  </Tab>
-  
-  <Tab title="API Key">
-    ```bash
-    curl -X POST http://localhost:3000/send/message \
-      -H "X-API-Key: your-api-key" \
-      -H "Content-Type: application/json" \
-      -d '{"phone": "6289685028129@s.whatsapp.net", "message": "Hello"}'
-    ```
-  </Tab>
-  
-  <Tab title="No Auth (Development)">
-    ```bash
-    curl -X POST http://localhost:3000/send/message \
-      -H "Content-Type: application/json" \
-      -d '{"phone": "6289685028129@s.whatsapp.net", "message": "Hello"}'
-    ```
-  </Tab>
-</Tabs>
+## Endpoint groups
 
-## API Endpoints Overview
+| Group | Purpose |
+| --- | --- |
+| Devices | Create, list, log in, log out and delete device slots; per-device webhooks and Chatwoot configs. |
+| App | Login (QR, pairing code, passkey), logout, reconnect, status, server info. |
+| Send | Text, media, contact, location, link, poll, presence; scheduling. |
+| Message | React, edit, revoke, delete, read, star, forward, download media. |
+| Chat | List chats and messages; pin, archive, disappearing timer, history request. |
+| User | Profile info, avatar, push name, privacy, contacts, groups, number check. |
+| Group | Create, participants, admins, join requests, settings, invite links. |
+| Newsletter | Followed channels and their messages. |
+| Call | Reject incoming calls. |
 
-### Application Management
-- `GET /app/login` - Get QR code for authentication
-- `GET /app/login-with-code` - Get pairing code for authentication
-- `GET /app/logout` - Logout and remove session
-- `GET /app/reconnect` - Reconnect to WhatsApp
-- `GET /app/devices` - Get list of connected devices
+The endpoint pages in this tab are generated from GOWA's OpenAPI specification. The authoritative, up-to-date spec is [`docs/openapi.yaml`](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml) in the repository.
 
-### User Operations
-- `GET /user/info` - Get user information
-- `GET /user/avatar` - Get user avatar
-- `POST /user/avatar` - Update user avatar
-- `POST /user/pushname` - Update display name
-- `GET /user/my/privacy` - Get privacy settings
-- `GET /user/my/groups` - Get user's groups
-- `GET /user/my/contacts` - Get contact list
-- `GET /user/check` - Check if user is on WhatsApp
-- `GET /user/business-profile` - Get business profile
+## Requests
 
-### Message Operations
-- `POST /send/message` - Send text message
-- `POST /send/image` - Send image
-- `POST /send/audio` - Send audio file
-- `POST /send/file` - Send document
-- `POST /send/video` - Send video
-- `POST /send/contact` - Send contact
-- `POST /send/link` - Send link with preview
-- `POST /send/location` - Send location
-- `POST /send/poll` - Send poll/vote
-- `POST /send/presence` - Update presence status
-- `POST /send/chat-presence` - Send typing indicator
+- JSON bodies: `Content-Type: application/json`.
+- File uploads: `multipart/form-data`.
+- Phone numbers: digits with country code (`628123456789`) or a full JID (`...@s.whatsapp.net`, `...@g.us`).
 
-### Message Management
-- `POST /message/{id}/revoke` - Revoke/delete message
-- `POST /message/{id}/delete` - Delete message
-- `POST /message/{id}/reaction` - React to message
-- `POST /message/{id}/update` - Edit message
-- `POST /message/{id}/read` - Mark message as read
-- `POST /message/{id}/star` - Star message
-- `POST /message/{id}/unstar` - Unstar message
-
-### Chat Operations
-- `GET /chats` - List all chats
-- `GET /chat/{jid}/messages` - Get chat messages
-- `POST /chat/{jid}/label` - Label/unlabel chat
-- `POST /chat/{jid}/pin` - Pin/unpin chat
-
-### Group Management
-- `GET /group/info` - Get group information
-- `POST /group` - Create new group
-- `POST /group/participants` - Add participants
-- `POST /group/participants/remove` - Remove participants
-- `POST /group/participants/promote` - Promote to admin
-- `POST /group/participants/demote` - Demote from admin
-- `POST /group/join-with-link` - Join group via link
-- `GET /group/info-from-link` - Get group info from link
-- `GET /group/participant-requests` - Get join requests
-- `POST /group/participant-requests/approve` - Approve join request
-- `POST /group/participant-requests/reject` - Reject join request
-- `POST /group/leave` - Leave group
-- `POST /group/photo` - Set group photo
-- `POST /group/name` - Set group name
-- `POST /group/locked` - Lock/unlock group
-- `POST /group/announce` - Enable/disable announce mode
-- `POST /group/topic` - Set group topic
-
-### Newsletter Operations
-- `POST /newsletter/unfollow` - Unfollow newsletter
-
-## Response Format
-
-All API responses follow a consistent format:
+## Responses
 
 ```json
 {
   "code": "SUCCESS",
-  "message": "Description of the result",
-  "results": {
-    // Response data here
-  }
+  "message": "Success",
+  "results": {}
 }
 ```
 
-### Success Response
-```json
-{
-  "code": "SUCCESS",
-  "message": "Message sent successfully",
-  "results": {
-    "message_id": "3EB0B430B6F8F1D0E053AC120E0A9E5C",
-    "status": "Message sent to 6289685028129@s.whatsapp.net"
-  }
-}
+`code` is `SUCCESS` or an error code; `results` holds the data. See [Errors](/api-reference/errors).
+
+## Example
+
+```bash
+curl -u admin:changeme -X POST http://localhost:3000/send/message \
+  -H "Content-Type: application/json" \
+  -H "X-Device-Id: my-device" \
+  -d '{"phone": "628123456789", "message": "Hello from GOWA"}'
 ```
 
-### Error Response
-```json
-{
-  "code": "INTERNAL_SERVER_ERROR",
-  "message": "you are not logged in",
-  "results": null
-}
-```
+## Other interfaces
 
-## Phone Number Format
-
-All phone numbers must include the country code and use the WhatsApp JID format:
-
-- **Format**: `{country_code}{phone_number}@s.whatsapp.net`
-- **Example**: `6289685028129@s.whatsapp.net`
-- **Group Format**: `{group_id}@g.us`
-
-<Note>
-Remove any leading zeros, plus signs, or special characters from phone numbers.
-</Note>
-
-## Rate Limiting
-
-The API implements rate limiting to comply with WhatsApp's usage policies:
-
-- **Messages**: 1000 messages per day per number
-- **API Calls**: 100 requests per minute
-- **File Uploads**: 50 files per hour
-
-Rate limit headers are included in responses:
-
-```http
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1640995200
-```
-
-## Media Handling
-
-### Supported Formats
-
-| Type | Formats | Max Size |
-|------|---------|----------|
-| **Images** | JPG, PNG, GIF, WebP | 16 MB |
-| **Videos** | MP4, 3GP, MOV, AVI | 64 MB |
-| **Audio** | MP3, OGG, AAC, M4A | 16 MB |
-| **Documents** | PDF, DOC, XLS, TXT | 100 MB |
-
-### Upload Methods
-
-<Tabs>
-  <Tab title="File Upload">
-    ```bash
-    curl -X POST http://localhost:3000/send/image \
-      -F "phone=6289685028129@s.whatsapp.net" \
-      -F "caption=Check out this image!" \
-      -F "image=@/path/to/image.jpg"
-    ```
-  </Tab>
-  
-  <Tab title="URL Upload">
-    ```bash
-    curl -X POST http://localhost:3000/send/image \
-      -H "Content-Type: application/json" \
-      -d '{
-        "phone": "6289685028129@s.whatsapp.net",
-        "caption": "Image from URL",
-        "image_url": "https://example.com/image.jpg"
-      }'
-    ```
-  </Tab>
-</Tabs>
-
-## Error Codes
-
-| Code | Description | Action |
-|------|-------------|---------|
-| `SUCCESS` | Request completed successfully | Continue |
-| `400` | Bad request - invalid parameters | Check request format |
-| `401` | Unauthorized - not logged in | Authenticate with WhatsApp |
-| `404` | Not found - invalid endpoint or resource | Check URL and parameters |
-| `429` | Too many requests - rate limited | Reduce request frequency |
-| `500` | Internal server error | Check server logs |
-
-## SDKs and Libraries
-
-<CardGroup cols={3}>
-  <Card title="Go SDK" icon="golang" href="/api-reference/sdks/go">
-    Official Go client library
-  </Card>
-  <Card title="JavaScript" icon="js" href="/api-reference/sdks/javascript">
-    Node.js/browser library
-  </Card>
-  <Card title="Python" icon="python" href="/api-reference/sdks/python">
-    Python wrapper library
-  </Card>
-</CardGroup>
-
-## Testing
-
-Use our Postman collection to test the API:
-
-<Card title="Postman Collection" icon="play" href="/api-reference/sdks/postman">
-  Import our complete Postman collection with examples
-</Card>
-
-## Support
-
-<CardGroup cols={2}>
-  <Card title="GitHub Issues" icon="github" href="https://github.com/aldinokemal/go-whatsapp-web-multidevice/issues">
-    Report bugs and request features
-  </Card>
-  <Card title="Documentation" icon="book" href="/quickstart">
-    Browse our complete documentation
-  </Card>
-</CardGroup>
+- **WebSocket** at `/ws` for live dashboard events.
+- **MCP** at `/mcp` for AI agents ([MCP server](/integrations/mcp)).
+- **Webhooks** pushed to your URLs ([Webhooks](/concepts/webhooks)).

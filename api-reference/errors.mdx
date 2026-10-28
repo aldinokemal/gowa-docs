@@ -1,0 +1,28 @@
+---
+title: "Errors"
+description: "Error response format and the codes returned by the GOWA API."
+---
+
+Errors use the standard envelope with a non-`SUCCESS` code:
+
+```json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "phone: cannot be blank."
+}
+```
+
+Branch on the HTTP status and `code`, not on `message`.
+
+| HTTP | Codes |
+| --- | --- |
+| 400 | `VALIDATION_ERROR`, `INVALID_JID`, `ALREADY_LOGGED_IN`, `DEVICE_ID_REQUIRED` |
+| 401 | `AUTHENTICATION_ERROR` (device not logged in); also Basic Auth failures (no JSON `code`) |
+| 404 | `NOT_FOUND`, `DEVICE_NOT_FOUND` |
+| 408 | `CONTEXT_ERROR` |
+| 429 | `WA_REACHOUT_TIMELOCK` |
+| 500 | `INTERNAL_SERVER_ERROR`, `QR_CHANNEL_ERROR`, `SESSION_SAVED_ERROR`, `UPLOAD_MEDIA_ERROR`, `WEBHOOK_ERROR`, `INVALID_WA_CLI` |
+| 503 | `DEVICE_MANAGER_UNAVAILABLE` |
+| 504 | `GATEWAY_TIMEOUT` |
+
+Meanings, fixes and retry guidance: [Error handling](/advanced/error-handling).

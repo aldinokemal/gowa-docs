@@ -1,0 +1,59 @@
+---
+title: "Python"
+description: "Call the GOWA REST API from Python with requests."
+---
+
+There is no official Python SDK; `requests` covers everything.
+
+```python
+import requests
+
+class Gowa:
+    def __init__(self, base_url, user, password, device_id):
+        self.base = base_url.rstrip("/")
+        self.s = requests.Session()
+        self.s.auth = (user, password)
+        self.s.headers["X-Device-Id"] = device_id
+
+    def _handle(self, r):
+        data = r.json()
+        if not r.ok:
+            raise RuntimeError(f"{r.status_code} {data.get('code')}: {data.get('message')}")
+        return data.get("results")
+
+    def send_text(self, phone, message, **extra):
+        return self._handle(self.s.post(f"{self.base}/send/message",
+                                        json={"phone": phone, "message": message, **extra}, timeout=60))
+
+    def send_image(self, phone, path, caption=""):
+        with open(path, "rb") as f:
+            return self._handle(self.s.post(f"{self.base}/send/image",
+                                            data={"phone": phone, "caption": caption},
+                                            files={"image": f}, timeout=120))
+
+    def chats(self, limit=20):
+        return self._handle(self.s.get(f"{self.base}/chats", params={"limit": limit}, timeout=30))
+
+
+wa = Gowa("http://localhost:3000", "admin", "changeme", "my-device")
+print(wa.send_text("628123456789", "Hello from Python"))
+```
+
+Webhook receiver (Flask) with signature check:
+
+```python
+import hashlib, hmac
+from flask import Flask, request, abort
+
+app = Flask(__name__)
+SECRET = b"change-me"
+
+@app.post("/wa-hook")
+def hook():
+    expected = "sha256=" + hmac.new(SECRET, request.get_data(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, request.headers.get("X-Hub-Signature-256", "")):
+        abort(401)
+    event = request.get_json()
+    print(event["event"], event.get("payload", {}).get("body"))
+    return "", 200
+```

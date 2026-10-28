@@ -1,0 +1,18 @@
+---
+title: "Postman"
+description: "Import GOWA's OpenAPI specification into Postman or Insomnia."
+---
+
+GOWA ships an OpenAPI 3 spec rather than a Postman collection. Import it to get every endpoint as a ready-made request.
+
+1. In Postman, choose **Import → Link** and paste:
+   ```text
+   https://raw.githubusercontent.com/aldinokemal/go-whatsapp-web-multidevice/main/docs/openapi.yaml
+   ```
+2. Open the generated collection's **Authorization** tab, choose **Basic Auth**, and enter your `APP_BASIC_AUTH` username and password. Requests set to **Inherit auth from parent** use it.
+3. Set the `baseUrl` collection variable to your server, e.g. `http://localhost:3000`.
+4. Add an `X-Device-Id` header (or a collection-level pre-request header) with your device ID.
+
+Insomnia, Bruno and Hoppscotch import the same file.
+
+The dashboard bundled with GOWA (served at `/`) is another quick way to try endpoints interactively.

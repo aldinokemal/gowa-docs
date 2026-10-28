@@ -1,0 +1,75 @@
+---
+title: "Go"
+description: "Call the GOWA REST API from Go with net/http."
+---
+
+There is no official Go SDK. The API is plain HTTP + JSON, so the standard library is enough.
+
+```go
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"time"
+)
+
+type Client struct {
+	BaseURL, User, Pass, DeviceID string
+	HTTP                          *http.Client
+}
+
+type Response struct {
+	Code    string          `json:"code"`
+	Message string          `json:"message"`
+	Results json.RawMessage `json:"results"`
+}
+
+func (c *Client) Post(path string, body any) (*Response, error) {
+	buf, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPost, c.BaseURL+path, bytes.NewReader(buf))
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(c.User, c.Pass)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Device-Id", c.DeviceID)
+
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	var out Response
+	if err := json.NewDecoder(res.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("HTTP %d: %w", res.StatusCode, err)
+	}
+	if res.StatusCode >= 300 {
+		return &out, fmt.Errorf("%s: %s", out.Code, out.Message)
+	}
+	return &out, nil
+}
+
+func main() {
+	c := &Client{
+		BaseURL:  "http://localhost:3000",
+		User:     "admin",
+		Pass:     "changeme",
+		DeviceID: "my-device",
+		HTTP:     &http.Client{Timeout: 60 * time.Second},
+	}
+	res, err := c.Post("/send/message", map[string]any{
+		"phone":   "628123456789",
+		"message": "Hello from Go",
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(res.Results))
+}
+```
+
+For uploads, build a `multipart/form-data` body with `mime/multipart` and post to `/send/image`, `/send/file` and so on. To generate a typed client, run an OpenAPI generator (for example `oapi-codegen`) against [`docs/openapi.yaml`](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml).

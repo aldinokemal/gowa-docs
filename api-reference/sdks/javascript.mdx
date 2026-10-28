@@ -1,0 +1,43 @@
+---
+title: "JavaScript"
+description: "Call the GOWA REST API from Node.js or the browser with fetch."
+---
+
+There is no official JavaScript SDK; use `fetch` (Node.js 18+).
+
+```javascript
+const GOWA = "http://localhost:3000";
+const headers = {
+  Authorization: "Basic " + Buffer.from("admin:changeme").toString("base64"),
+  "X-Device-Id": "my-device",
+};
+
+async function call(method, path, body) {
+  const res = await fetch(GOWA + path, {
+    method,
+    headers: body instanceof FormData ? headers : { ...headers, "Content-Type": "application/json" },
+    body: body instanceof FormData ? body : body && JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw Object.assign(new Error(data.message), { code: data.code, status: res.status });
+  return data.results;
+}
+
+// text
+await call("POST", "/send/message", { phone: "628123456789", message: "Hello from JS" });
+
+// image upload
+const { openAsBlob } = await import("node:fs");
+const form = new FormData();
+form.append("phone", "628123456789");
+form.append("caption", "Photo");
+form.append("image", await openAsBlob("photo.jpg"), "photo.jpg");
+await call("POST", "/send/image", form);
+
+// read chats
+console.log(await call("GET", "/chats?limit=10"));
+```
+
+In browsers, do not embed Basic Auth credentials in public pages; call GOWA from your backend, and set `APP_CORS_ALLOWED_ORIGINS` if a trusted front end must call it directly.
+
+For **n8n**, install the community node [`@aldinokemal2104/n8n-nodes-gowa`](https://www.npmjs.com/package/@aldinokemal2104/n8n-nodes-gowa).
