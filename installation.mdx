@@ -1,377 +1,161 @@
 ---
 title: "Installation"
-description: "Multiple ways to install and deploy WhatsApp API MultiDevice"
+description: "Install GOWA with Docker, Docker Compose, a release binary or from source, and run it behind a reverse proxy."
 ---
 
-## System Requirements
+GOWA ships as one binary. The REST API, webhooks, dashboard and MCP endpoint all start with `whatsapp rest`.
 
-- **Operating System**: Linux, Windows, macOS
-- **Go Version**: 1.19 or higher (for building from source)
-- **Memory**: Minimum 512MB RAM
-- **Storage**: At least 1GB free space
-- **Network**: Stable internet connection
+## Requirements
 
-## Installation Methods
+| Item | Needed for |
+| --- | --- |
+| FFmpeg | Media conversion (video, voice notes). Included in the Docker image. |
+| libwebp tools (`cwebp`, `dwebp`, `webpmux`) | Stickers, including animated WebP. Included in the Docker image. |
+| Go 1.26+ | Building from source only. |
 
-<CardGroup cols={3}>
-  <Card title="Binary Release" icon="download" href="#binary-release">
-    Quick setup with pre-built binaries
-  </Card>
-  <Card title="Docker" icon="docker" href="#docker">
-    Containerized deployment
-  </Card>
-  <Card title="Source Code" icon="code" href="#from-source">
-    Build from source code
-  </Card>
-</CardGroup>
-
-## Binary Release
-
-Download the latest pre-built binary for your platform:
-
-<Tabs>
-  <Tab title="Linux">
-    ```bash
-    # AMD64
-    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-linux-amd64 -o whatsapp
-    chmod +x whatsapp
-    
-    # ARM64
-    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-linux-arm64 -o whatsapp
-    chmod +x whatsapp
-    ```
-  </Tab>
-  
-  <Tab title="Windows">
-    ```powershell
-    # Download Windows binary
-    Invoke-WebRequest -Uri "https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-windows-amd64.exe" -OutFile "whatsapp.exe"
-    ```
-  </Tab>
-  
-  <Tab title="macOS">
-    ```bash
-    # Intel Macs
-    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-darwin-amd64 -o whatsapp
-    chmod +x whatsapp
-    
-    # Apple Silicon (M1/M2)
-    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-darwin-arm64 -o whatsapp
-    chmod +x whatsapp
-    ```
-  </Tab>
-</Tabs>
-
-### Run the Binary
-
-```bash
-./whatsapp
-```
-
-The API will start on `http://localhost:3000`
+Supported platforms: Linux (amd64, arm64, armv7, 386), macOS (Intel, Apple Silicon), Windows (amd64, 386; WSL recommended).
 
 ## Docker
 
-### Using Docker Run
+Images are published to Docker Hub and GHCR:
 
-<Tabs>
-  <Tab title="Basic Setup">
-    ```bash
-    docker run -d \
-      --name whatsapp-api \
-      -p 3000:3000 \
-      aldinokemal/go-whatsapp-web-multidevice:latest
-    ```
-  </Tab>
-  
-  <Tab title="With Volume">
-    ```bash
-    docker run -d \
-      --name whatsapp-api \
-      -p 3000:3000 \
-      -v $(pwd)/database:/app/database \
-      aldinokemal/go-whatsapp-web-multidevice:latest
-    ```
-  </Tab>
-  
-  <Tab title="With Environment Variables">
-    ```bash
-    docker run -d \
-      --name whatsapp-api \
-      -p 3000:3000 \
-      -e PORT=3000 \
-      -e APP_DEBUG=true \
-      -v $(pwd)/database:/app/database \
-      aldinokemal/go-whatsapp-web-multidevice:latest
-    ```
-  </Tab>
-</Tabs>
+- `aldinokemal2104/go-whatsapp-web-multidevice`
+- `ghcr.io/aldinokemal/go-whatsapp-web-multidevice`
 
-### Using Docker Compose
+```bash
+docker volume create gowa_storages
+docker volume create gowa_statics
 
-Create a `docker-compose.yml` file:
+docker run -d --name gowa --restart always \
+  -p 3000:3000 \
+  -v gowa_storages:/app/storages \
+  -v gowa_statics:/app/statics \
+  -e APP_BASIC_AUTH=admin:changeme \
+  aldinokemal2104/go-whatsapp-web-multidevice:latest
+```
 
-```yaml
-version: '3.8'
+- `/app/storages` holds the SQLite databases (sessions, chat history, schedules, OAuth). Losing it unpairs every device.
+- `/app/statics` holds QR images, uploads and downloaded media.
+- The default command is `rest`. Pass flags after it, for example `... go-whatsapp-web-multidevice rest --autoreply="Away"`.
+- The entrypoint fixes volume ownership and drops privileges to `gowauser` (UID 20001, GID 20000).
+- Container time is UTC (`TZ=UTC`). Override `TZ` if you need local log timestamps.
 
+### Docker Compose
+
+```yaml docker-compose.yml
 services:
-  whatsapp-api:
-    image: aldinokemal/go-whatsapp-web-multidevice:latest
-    container_name: whatsapp-api
-    restart: unless-stopped
+  gowa:
+    image: aldinokemal2104/go-whatsapp-web-multidevice:latest
+    container_name: gowa
+    restart: always
     ports:
       - "3000:3000"
-    volumes:
-      - ./database:/app/database
-      - ./logs:/app/logs
     environment:
-      - PORT=3000
-      - APP_DEBUG=false
-      - APP_ENV=production
-    networks:
-      - whatsapp-network
+      APP_BASIC_AUTH: admin:changeme
+      WHATSAPP_WEBHOOK: https://example.com/wa-hook
+      WHATSAPP_WEBHOOK_SECRET: change-me
+    volumes:
+      - gowa_storages:/app/storages
+      - gowa_statics:/app/statics
 
-networks:
-  whatsapp-network:
-    driver: bridge
+volumes:
+  gowa_storages:
+  gowa_statics:
 ```
 
-Start the service:
+The repository's own `docker-compose.yml` builds the image from `docker/golang.Dockerfile` and reads `src/.env`. Use it when you want to build locally: `cp src/.env.example src/.env && docker compose up -d --build`.
+
+## Release binary
+
+Download an archive from [GitHub Releases](https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest). Archives are named `whatsapp_<version>_<os>_<arch>.zip`, for example:
 
 ```bash
-docker-compose up -d
+curl -LO https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/download/v9.7.0/whatsapp_9.7.0_linux_amd64.zip
+unzip whatsapp_9.7.0_linux_amd64.zip
+chmod +x whatsapp
+./whatsapp rest
 ```
 
-## From Source
-
-### Prerequisites
-
-- Go 1.19 or higher
-- Git
-
-### Clone and Build
+Install the media tools on the host:
 
 ```bash
-# Clone the repository
+# Debian/Ubuntu
+sudo apt install ffmpeg webp
+# macOS
+brew install ffmpeg webp
+```
+
+Verify the download against `checksums.txt` from the same release. `./whatsapp version` prints the version; `./whatsapp --help` lists every flag.
+
+## From source
+
+```bash
 git clone https://github.com/aldinokemal/go-whatsapp-web-multidevice.git
-cd go-whatsapp-web-multidevice
-
-# Download dependencies
-go mod tidy
-
-# Build the application
-go build -o whatsapp main.go
-
-# Run the application
-./whatsapp
+cd go-whatsapp-web-multidevice/src
+cp .env.example .env    # optional
+go build -o whatsapp
+./whatsapp rest
 ```
 
-### Development Mode
+On macOS also `export CGO_CFLAGS_ALLOW="-Xpreprocessor"` before building.
 
-For development with hot reload:
+### ARM without a C toolchain
+
+The `purego` build tag selects a pure-Go SQLite driver, so you can cross-compile with CGO disabled:
 
 ```bash
-# Install air for hot reload
-go install github.com/cosmtrek/air@latest
-
-# Run in development mode
-air
+# Raspberry Pi 2/3/4 (ARMv7)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=7 go build -tags purego -o whatsapp-armv7
+# Raspberry Pi Zero/1 (ARMv6)
+CGO_ENABLED=0 GOOS=linux GOARCH=arm GOARM=6 go build -tags purego -o whatsapp-armv6
 ```
 
-## Configuration
+## Storage
 
-### Environment Variables
+By default everything is SQLite under `storages/`:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3000` |
-| `APP_DEBUG` | Enable debug mode | `false` |
-| `APP_ENV` | Environment (development/production) | `development` |
-| `DB_TYPE` | Database type (sqlite/mysql/postgres) | `sqlite` |
-| `DB_PATH` | Database file path (for SQLite) | `./database/whatsapp.db` |
+| Data | Default | Setting |
+| --- | --- | --- |
+| WhatsApp sessions and keys | `file:storages/whatsapp.db` | `DB_URI` |
+| Session key cache (optional, separate DB) | uses `DB_URI` | `DB_KEYS_URI` |
+| Chat history, device registry, schedules | `file:storages/chatstorage.db` | not configurable |
+| MCP OAuth clients and tokens | `file:storages/oauth.db` | `MCP_OAUTH_DB_URI` |
 
-### Configuration File
+`DB_URI` also accepts PostgreSQL, for example `postgres://user:pass@host:5432/gowa?sslmode=disable`. Back up `storages/` (or the PostgreSQL database plus `storages/`) to keep paired devices across rebuilds.
 
-Create a `config.yml` file:
+## Behind a reverse proxy
 
-```yaml
-app:
-  port: 3000
-  debug: false
-  environment: production
-
-database:
-  type: sqlite
-  path: ./database/whatsapp.db
-
-logging:
-  level: info
-  file: ./logs/app.log
-
-security:
-  enable_cors: true
-  allowed_origins: ["*"]
-```
-
-## Database Setup
-
-### SQLite (Default)
-
-No additional setup required. The database file will be created automatically.
-
-### MySQL
+Serve GOWA under a subpath with `APP_BASE_PATH`, and trust the proxy's forwarded headers with `APP_TRUSTED_PROXIES`:
 
 ```bash
-# Set environment variables
-export DB_TYPE=mysql
-export DB_HOST=localhost
-export DB_PORT=3306
-export DB_NAME=whatsapp_api
-export DB_USER=username
-export DB_PASSWORD=password
+./whatsapp rest --base-path=/gowa --trusted-proxies=10.0.0.0/8
 ```
-
-### PostgreSQL
-
-```bash
-# Set environment variables
-export DB_TYPE=postgres
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_NAME=whatsapp_api
-export DB_USER=username
-export DB_PASSWORD=password
-export DB_SSLMODE=disable
-```
-
-## Production Deployment
-
-### Systemd Service
-
-Create `/etc/systemd/system/whatsapp-api.service`:
-
-```ini
-[Unit]
-Description=WhatsApp API MultiDevice
-After=network.target
-
-[Service]
-Type=simple
-User=whatsapp
-WorkingDirectory=/opt/whatsapp-api
-ExecStart=/opt/whatsapp-api/whatsapp
-Restart=always
-RestartSec=5
-Environment=PORT=3000
-Environment=APP_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start the service:
-
-```bash
-sudo systemctl enable whatsapp-api
-sudo systemctl start whatsapp-api
-sudo systemctl status whatsapp-api
-```
-
-### Nginx Reverse Proxy
 
 ```nginx
-server {
-    listen 80;
-    server_name yourdomain.com;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        
-        # WebSocket support
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
+location /gowa/ {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;     # WebSocket at /gowa/ws
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 100m;                  # largest upload GOWA accepts
 }
 ```
 
-## Verification
+`/health` stays at the root (`/health`, not `/gowa/health`) so probes work regardless of base path.
 
-After installation, verify the setup:
+## Verify
 
-1. **Check if the service is running:**
-   ```bash
-   curl http://localhost:3000/health
-   ```
+```bash
+curl http://localhost:3000/health                      # OK, no auth needed
+curl -u admin:changeme http://localhost:3000/app/info  # server info, no device needed
+curl -u admin:changeme http://localhost:3000/devices   # registered devices
+```
 
-2. **Login to WhatsApp:**
-   ```bash
-   curl http://localhost:3000/app/login
-   ```
+`/health` returns `OK` once storage is initialized. It does not report whether any WhatsApp account is connected; use `GET /devices/{device_id}/status` for that.
 
-3. **Check connected devices:**
-   ```bash
-   curl http://localhost:3000/app/devices
-   ```
+## Upgrading
 
-## Troubleshooting
-
-<AccordionGroup>
-  <Accordion icon="triangle-exclamation" title="Port Already in Use">
-    If port 3000 is already in use:
-    
-    ```bash
-    # Find the process using port 3000
-    lsof -i :3000
-    
-    # Kill the process or use a different port
-    export PORT=3001
-    ./whatsapp
-    ```
-  </Accordion>
-  
-  <Accordion icon="triangle-exclamation" title="Permission Denied">
-    If you get permission denied errors:
-    
-    ```bash
-    # Make sure the binary is executable
-    chmod +x whatsapp
-    
-    # For Linux/macOS, you might need to allow execution
-    sudo xattr -d com.apple.quarantine whatsapp  # macOS only
-    ```
-  </Accordion>
-  
-  <Accordion icon="triangle-exclamation" title="Database Connection Error">
-    If you encounter database errors:
-    
-    1. Check database permissions
-    2. Ensure the database directory exists
-    3. Verify connection string format
-    4. Check firewall settings for external databases
-  </Accordion>
-</AccordionGroup>
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Authentication" icon="key" href="/authentication">
-    Set up WhatsApp authentication
-  </Card>
-  
-  <Card title="API Reference" icon="book" href="/api-reference/introduction">
-    Explore available endpoints
-  </Card>
-  
-  <Card title="Examples" icon="code" href="/examples/sending-messages">
-    See practical examples
-  </Card>
-  
-  <Card title="Best Practices" icon="star" href="/advanced/best-practices">
-    Production deployment tips
-  </Card>
-</CardGroup>
+Back up `storages/`, pull the new image or binary, and restart. Read the [release notes](https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases) for breaking changes first. Notable ones: v6 made the `rest` subcommand mandatory, v7 moved binaries to GoReleaser archives, v8 added multi-device (device-scoped calls need `X-Device-Id` once more than one device exists), and the standalone `whatsapp mcp` mode (`:8080/sse`) was replaced by the `/mcp` endpoint on the REST server.

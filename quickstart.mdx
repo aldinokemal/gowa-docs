@@ -1,199 +1,145 @@
 ---
 title: "Quickstart"
-description: "Get your WhatsApp API up and running in under 5 minutes"
+description: "Run GOWA, pair a WhatsApp account and send your first message in a few minutes."
 ---
 
-## Prerequisites
+## 1. Start the server
 
-Before you begin, make sure you have:
-
-- Go 1.19 or higher installed
-- A WhatsApp account (can be any existing WhatsApp account)
-- Basic understanding of REST APIs
-
-## Installation
-
-<AccordionGroup>
-  <Accordion icon="download" title="Download the Binary">
-    Download the latest release from our GitHub repository:
-    
+<Tabs>
+  <Tab title="Docker">
     ```bash
-    curl -L https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/latest/download/whatsapp-linux-amd64 -o whatsapp
-    chmod +x whatsapp
-    ```
-  </Accordion>
-  
-  <Accordion icon="docker" title="Using Docker">
-    Run the API using Docker:
-    
-    ```bash
-    docker run -d \
-      --name whatsapp-api \
+    docker run -d --name gowa \
       -p 3000:3000 \
-      -v $(pwd)/database:/app/database \
-      aldinokemal/go-whatsapp-web-multidevice:latest
+      -v gowa_storages:/app/storages \
+      -v gowa_statics:/app/statics \
+      -e APP_BASIC_AUTH=admin:changeme \
+      aldinokemal2104/go-whatsapp-web-multidevice:latest
     ```
-  </Accordion>
-  
-  <Accordion icon="code" title="Build from Source">
-    Clone and build from source:
-    
+
+    The image's default command is `rest`, so no arguments are needed. The same image is published as `ghcr.io/aldinokemal/go-whatsapp-web-multidevice`.
+  </Tab>
+  <Tab title="Binary">
+    Download the archive for your platform from [GitHub Releases](https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases) (for example `whatsapp_9.7.0_linux_amd64.zip`), then:
+
+    ```bash
+    unzip whatsapp_9.7.0_linux_amd64.zip
+    chmod +x whatsapp
+    ./whatsapp rest --basic-auth=admin:changeme
+    ```
+
+    Install FFmpeg and libwebp (`cwebp`) first; GOWA uses them for media conversion.
+  </Tab>
+  <Tab title="From source">
+    Requires Go 1.26+, FFmpeg and libwebp.
+
     ```bash
     git clone https://github.com/aldinokemal/go-whatsapp-web-multidevice.git
-    cd go-whatsapp-web-multidevice
-    go mod tidy
-    go run main.go
+    cd go-whatsapp-web-multidevice/src
+    go run . rest --basic-auth=admin:changeme
     ```
-  </Accordion>
-</AccordionGroup>
+  </Tab>
+</Tabs>
 
-## Authentication
+Check it is up:
 
-<Steps>
-  <Step title="Start the API Server">
-    Run the WhatsApp API server:
-    ```bash
-    ./whatsapp
-    ```
-    The server will start on `http://localhost:3000`
-  </Step>
-  
-  <Step title="Login to WhatsApp">
-    Open your browser and navigate to:
-    ```
-    http://localhost:3000/app/login
-    ```
-    
-    You'll see a QR code. Scan it with your WhatsApp mobile app:
-    1. Open WhatsApp on your phone
-    2. Go to Settings → Linked Devices
-    3. Tap "Link a Device" and scan the QR code
-  </Step>
-  
-  <Step title="Verify Connection">
-    Check if the connection is successful:
-    ```bash
-    curl http://localhost:3000/app/devices
-    ```
-    
-    You should see your connected device in the response.
-  </Step>
-</Steps>
+```bash
+curl http://localhost:3000/health
+# OK
+```
 
-## Send Your First Message
+<Note>
+  Basic Auth is optional but strongly recommended. Without `APP_BASIC_AUTH`, every route except `/health` is open to anyone who can reach the port.
+</Note>
 
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/message \
+## 2. Create a device
+
+Each WhatsApp account lives in a device slot. Create one and give it an ID you will reuse:
+
+```bash
+curl -u admin:changeme -X POST http://localhost:3000/devices \
   -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "message": "Hello from WhatsApp API!"
-  }'
+  -d '{"device_id": "my-device"}'
 ```
 
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/message', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    message: 'Hello from WhatsApp API!'
-  })
-});
+Omit `device_id` to get a generated UUID.
 
-const result = await response.json();
-console.log(result);
+## 3. Pair the account
+
+<Tabs>
+  <Tab title="QR code">
+    ```bash
+    curl -u admin:changeme http://localhost:3000/devices/my-device/login
+    ```
+
+    Open `results.qr_link` in a browser and scan it from WhatsApp → **Linked devices** → **Link a device**. The code expires after `results.qr_duration` seconds; request a new one if it lapses.
+  </Tab>
+  <Tab title="Pairing code">
+    ```bash
+    curl -u admin:changeme -X POST \
+      "http://localhost:3000/devices/my-device/login/code?phone=628123456789"
+    ```
+
+    Enter `results.pair_code` on the phone under **Linked devices** → **Link with phone number instead**.
+  </Tab>
+  <Tab title="Dashboard">
+    Open `http://localhost:3000/`, enter your Basic Auth credentials when the browser prompts, and pair the device from the UI.
+  </Tab>
+</Tabs>
+
+Confirm the device is logged in (`results.is_logged_in` should be `true`):
+
+```bash
+curl -u admin:changeme http://localhost:3000/devices/my-device/status
 ```
 
-```python Python
-import requests
+## 4. Send a message
 
-url = "http://localhost:3000/send/message"
-payload = {
-    "phone": "6289685028129@s.whatsapp.net",
-    "message": "Hello from WhatsApp API!"
-}
-
-response = requests.post(url, json=payload)
-print(response.json())
+```bash
+curl -u admin:changeme -X POST http://localhost:3000/send/message \
+  -H "Content-Type: application/json" \
+  -H "X-Device-Id: my-device" \
+  -d '{"phone": "628123456789", "message": "Hello from GOWA"}'
 ```
 
-```go Go
-package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "net/http"
-)
-
-func main() {
-    url := "http://localhost:3000/send/message"
-    
-    payload := map[string]string{
-        "phone":   "6289685028129@s.whatsapp.net",
-        "message": "Hello from WhatsApp API!",
-    }
-    
-    jsonData, _ := json.Marshal(payload)
-    
-    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-    if err != nil {
-        fmt.Println("Error:", err)
-        return
-    }
-    defer resp.Body.Close()
-    
-    fmt.Println("Message sent successfully!")
+```json
+{
+  "code": "SUCCESS",
+  "message": "Success",
+  "results": {
+    "message_id": "3EB0B430B6F8F1D0E053AC120E0A9E5C",
+    "status": "Message sent to 628123456789 (server timestamp: ...)"
+  }
 }
 ```
-</CodeGroup>
 
-## Next Steps
+`phone` takes a number with country code and no `+` or spaces, or a full JID such as `628123456789@s.whatsapp.net` or `120363025246125486@g.us` for a group. With only one device registered, `X-Device-Id` is optional.
+
+## 5. Receive messages
+
+Restart with a webhook URL and GOWA will POST every event to it:
+
+```bash
+./whatsapp rest --basic-auth=admin:changeme --webhook=https://example.com/wa-hook --webhook-secret=change-me
+```
+
+See [Webhooks](/concepts/webhooks) for payloads and signature checks.
+
+## Next steps
 
 <CardGroup cols={2}>
-  <Card title="Authentication" icon="key" href="/authentication">
-    Learn about secure authentication methods
+  <Card title="Installation" icon="download" href="/installation">
+    Docker Compose, reverse proxy, PostgreSQL.
   </Card>
-  
-  <Card title="Send Media" icon="image" href="/examples/media-handling">
-    Send images, videos, and documents
+
+  <Card title="Configuration reference" icon="sliders" href="/configuration">
+    Every flag and environment variable.
   </Card>
-  
-  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
-    Receive real-time message notifications
+
+  <Card title="Multi-device" icon="users" href="/concepts/multidevice">
+    Run several accounts on one server.
   </Card>
-  
-  <Card title="API Reference" icon="book" href="/api-reference/introduction">
-    Explore all available endpoints
+
+  <Card title="API reference" icon="book" href="/api-reference/introduction">
+    All endpoints.
   </Card>
 </CardGroup>
-
-## Common Issues
-
-<AccordionGroup>
-  <Accordion icon="triangle-exclamation" title="QR Code Not Appearing">
-    If the QR code doesn't appear:
-    1. Make sure the server is running on port 3000
-    2. Clear your browser cache
-    3. Try accessing `http://localhost:3000/app/login` directly
-  </Accordion>
-  
-  <Accordion icon="triangle-exclamation" title="Connection Timeout">
-    If you get connection timeouts:
-    1. Ensure your firewall allows port 3000
-    2. Check if WhatsApp Web is working in your browser
-    3. Try restarting the API server
-  </Accordion>
-  
-  <Accordion icon="triangle-exclamation" title="Message Not Delivered">
-    If messages aren't being delivered:
-    1. Verify the phone number format includes country code
-    2. Check if the recipient is on WhatsApp using `/user/check`
-    3. Ensure your WhatsApp account is not restricted
-  </Accordion>
-</AccordionGroup>
