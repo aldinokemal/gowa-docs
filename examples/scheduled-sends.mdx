@@ -5,6 +5,8 @@ sidebarTitle: "Scheduled Sends"
 icon: "clock"
 ---
 
+![GOWA Message Scheduler Overview](/images/GOWA-Message-Scheduler-Overview.png "GOWA Message Scheduler Overview")
+
 Any send request can be scheduled instead of sent immediately. Add `scheduled_at` and `timezone`; GOWA stores the request and a background worker sends it at that time. Schedules survive restarts and wait for an offline device.
 
 Schedulable message types: text, image, file, video, audio, sticker, contact, link, location, poll and forward (`/message/{id}/forward`). Presence and typing indicators are not schedulable.
