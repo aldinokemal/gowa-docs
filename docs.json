@@ -97,8 +97,8 @@
     }
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/images/gowa-logo.webp",
+    "dark": "/images/gowa-logo.webp"
   },
   "navbar": {
     "links": [
