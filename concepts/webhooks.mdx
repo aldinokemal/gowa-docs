@@ -7,6 +7,33 @@ GOWA POSTs a JSON document to your URL for every WhatsApp event it receives: mes
 
 There is no webhook registration endpoint. Configure webhooks at startup, or per device through `/devices/{device_id}/webhook`.
 
+## How delivery works
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant WA as WhatsApp
+    participant G as GOWA
+    participant R as Your receiver
+    WA->>G: Event (whatsmeow)
+    G->>G: Skip if chat/sender matches WHATSAPP_WEBHOOK_IGNORE_JIDS
+    G->>G: Resolve targets (per-device webhook or global WHATSAPP_WEBHOOK)
+    G->>G: Skip target if event not in its allowlist (WHATSAPP_WEBHOOK_EVENTS)
+    loop Up to 5 attempts, 10 s timeout each
+        G->>R: POST JSON {event, device_id, session_id, payload}<br/>X-Hub-Signature-256: sha256=HMAC(body, secret)
+        R->>R: Verify HMAC over raw body
+        alt 2xx
+            R-->>G: 200 OK (delivered, stop)
+        else non-2xx or network error
+            R-->>G: Error
+            G->>G: Wait 1 s, 2 s, 4 s, then 8 s before the next attempt
+        end
+    end
+    Note over G: After the 5th failure the event is logged and dropped
+```
+
+Each target URL is delivered independently, with its own secret and retries.
+
 ## Configure
 
 ```bash
@@ -186,6 +213,15 @@ curl -u admin:changeme -X PATCH http://localhost:3000/devices/sales/webhook \
 ```
 
 The same fields are accepted by `POST /devices`. Read the current setting with `GET /devices/{device_id}/webhook`. Send `"webhook_url": ""` to clear it.
+
+```mermaid
+flowchart TD
+    A[Event for a device] --> B{Device has its own webhook_url?}
+    B -- No --> G[Send to global WHATSAPP_WEBHOOK URLs<br/>global secret and allowlist]
+    B -- Yes --> C{WHATSAPP_WEBHOOK_DEVICE_MERGE_GLOBAL=true?}
+    C -- No --> D[Send to device URL only<br/>device secret and allowlist]
+    C -- Yes --> E[Send to device URL and global URLs<br/>each with its own secret and allowlist<br/>duplicate URLs receive the event once]
+```
 
 By default a per-device URL **replaces** the global `WHATSAPP_WEBHOOK` for that slot. With `WHATSAPP_WEBHOOK_DEVICE_MERGE_GLOBAL=true` it is **added** to the global URLs instead: the device URL uses the device secret and allowlist, the global URLs keep the global ones, and a URL present in both receives the event once. Ignore-JID rules apply to both.
 
