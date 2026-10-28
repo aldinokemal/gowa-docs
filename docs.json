@@ -19,7 +19,8 @@
               "index",
               "quickstart",
               "installation",
-              "authentication"
+              "authentication",
+              "configuration"
             ]
           },
           {
@@ -36,7 +37,15 @@
               "examples/sending-messages",
               "examples/receiving-messages",
               "examples/media-handling",
-              "examples/group-management"
+              "examples/group-management",
+              "examples/scheduled-sends"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/mcp",
+              "integrations/chatwoot"
             ]
           },
           {
@@ -66,7 +75,7 @@
             ]
           },
           {
-            "group": "SDKs & Libraries",
+            "group": "Client Examples",
             "pages": [
               "api-reference/sdks/go",
               "api-reference/sdks/javascript",

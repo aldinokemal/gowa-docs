@@ -1,836 +1,117 @@
 ---
 title: "Receiving Messages"
-description: "Learn how to receive and handle incoming WhatsApp messages using webhooks and polling"
+description: "Handle incoming messages with webhooks, or read stored chats and messages from GOWA's chat storage."
 ---
 
-## Overview
+GOWA offers two ways to receive messages:
 
-There are two main approaches to receive WhatsApp messages with the API:
+| Method | Use it for |
+| --- | --- |
+| **Webhooks** (recommended) | Reacting to events in real time. GOWA pushes each event to your URL. |
+| **Chat storage API** | Reading history, catching up after downtime, building inbox views. |
 
-1. **Webhooks** (Recommended) - Real-time message delivery via HTTP callbacks
-2. **Polling** - Periodically check for new messages via API calls
+## Webhooks
 
-This guide covers both methods and shows you how to handle different types of incoming messages.
+Start GOWA with a webhook URL and secret:
 
-## Webhooks (Recommended)
-
-Webhooks provide real-time message delivery by sending HTTP POST requests to your server whenever a new message arrives.
-
-### Setting Up Webhooks
-
-Configure your webhook endpoint in the API:
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/webhook/set \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://your-server.com/webhook",
-    "events": ["message", "message_ack", "group_update"]
-  }'
+```bash
+./whatsapp rest --basic-auth=admin:changeme \
+  --webhook=https://example.com/wa-hook \
+  --webhook-secret=change-me \
+  --webhook-events=message,message.ack
 ```
 
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/webhook/set', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    url: 'https://your-server.com/webhook',
-    events: ['message', 'message_ack', 'group_update']
-  })
-});
-```
-</CodeGroup>
-
-### Webhook Payload Structure
-
-When a message is received, your webhook endpoint will receive a POST request with this structure:
+A text message arrives as:
 
 ```json
 {
   "event": "message",
-  "data": {
-    "id": "3EB0B430B6F8F1D0E053AC120E0A9E5C",
-    "from": "6289685028129@s.whatsapp.net",
-    "to": "6289685028130@s.whatsapp.net",
-    "timestamp": "2024-01-15T10:30:00Z",
-    "type": "text",
-    "body": "Hello! This is an incoming message.",
-    "fromMe": false,
-    "hasMedia": false,
-    "participant": null,
-    "isGroup": false,
-    "groupId": null
+  "device_id": "628123456789@s.whatsapp.net",
+  "session_id": "my-device",
+  "payload": {
+    "id": "3EB0C127D7BACC83D6A1",
+    "chat_id": "628987654321@s.whatsapp.net",
+    "from": "628987654321@s.whatsapp.net",
+    "from_name": "John Doe",
+    "timestamp": "2026-10-15T10:30:00Z",
+    "is_from_me": false,
+    "body": "Hello, how are you?"
   }
 }
 ```
 
-### Webhook Server Implementation
+In a group, `chat_id` is the group JID (`...@g.us`) and `from` is the member who sent it.
 
-<Tabs>
-  <Tab title="Node.js/Express">
-    ```javascript
-    const express = require('express');
-    const app = express();
-    
-    app.use(express.json());
-    
-    app.post('/webhook', (req, res) => {
-      const { event, data } = req.body;
-      
-      console.log('Received webhook:', event, data);
-      
-      switch (event) {
-        case 'message':
-          handleIncomingMessage(data);
-          break;
-        case 'message_ack':
-          handleMessageAck(data);
-          break;
-        case 'group_update':
-          handleGroupUpdate(data);
-          break;
-        default:
-          console.log('Unknown event:', event);
-      }
-      
-      // Always respond with 200 OK
-      res.status(200).json({ status: 'received' });
-    });
-    
-    function handleIncomingMessage(message) {
-      console.log(`New message from ${message.from}: ${message.body}`);
-      
-      // Auto-reply example
-      if (message.body.toLowerCase() === 'hello') {
-        sendReply(message.from, 'Hello! How can I help you?');
-      }
-    }
-    
-    async function sendReply(phone, message) {
-      try {
-        const response = await fetch('http://localhost:3000/send/message', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            phone,
-            message
-          })
-        });
-        
-        console.log('Reply sent:', await response.json());
-      } catch (error) {
-        console.error('Failed to send reply:', error);
-      }
-    }
-    
-    app.listen(8080, () => {
-      console.log('Webhook server running on port 8080');
-    });
-    ```
-  </Tab>
-  
-  <Tab title="Python/Flask">
-    ```python
-    from flask import Flask, request, jsonify
-    import requests
-    import json
-    
-    app = Flask(__name__)
-    
-    @app.route('/webhook', methods=['POST'])
-    def webhook():
-        data = request.get_json()
-        event = data.get('event')
-        message_data = data.get('data')
-        
-        print(f"Received webhook: {event}")
-        
-        if event == 'message':
-            handle_incoming_message(message_data)
-        elif event == 'message_ack':
-            handle_message_ack(message_data)
-        elif event == 'group_update':
-            handle_group_update(message_data)
-        
-        return jsonify({'status': 'received'}), 200
-    
-    def handle_incoming_message(message):
-        print(f"New message from {message['from']}: {message['body']}")
-        
-        # Auto-reply example
-        if message['body'].lower() == 'hello':
-            send_reply(message['from'], 'Hello! How can I help you?')
-    
-    def send_reply(phone, message):
-        try:
-            response = requests.post('http://localhost:3000/send/message', 
-                json={
-                    'phone': phone,
-                    'message': message
-                })
-            print(f"Reply sent: {response.json()}")
-        except Exception as e:
-            print(f"Failed to send reply: {e}")
-    
-    if __name__ == '__main__':
-        app.run(host='0.0.0.0', port=8080)
-    ```
-  </Tab>
-  
-  <Tab title="Go">
-    ```go
-    package main
-    
-    import (
-        "bytes"
-        "encoding/json"
-        "fmt"
-        "log"
-        "net/http"
-    )
-    
-    type WebhookPayload struct {
-        Event string      `json:"event"`
-        Data  MessageData `json:"data"`
-    }
-    
-    type MessageData struct {
-        ID        string `json:"id"`
-        From      string `json:"from"`
-        To        string `json:"to"`
-        Type      string `json:"type"`
-        Body      string `json:"body"`
-        FromMe    bool   `json:"fromMe"`
-        HasMedia  bool   `json:"hasMedia"`
-        IsGroup   bool   `json:"isGroup"`
-    }
-    
-    func webhookHandler(w http.ResponseWriter, r *http.Request) {
-        var payload WebhookPayload
-        
-        if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-            http.Error(w, "Invalid JSON", http.StatusBadRequest)
-            return
-        }
-        
-        fmt.Printf("Received webhook: %s\n", payload.Event)
-        
-        switch payload.Event {
-        case "message":
-            handleIncomingMessage(payload.Data)
-        case "message_ack":
-            handleMessageAck(payload.Data)
-        case "group_update":
-            handleGroupUpdate(payload.Data)
-        }
-        
-        w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(map[string]string{"status": "received"})
-    }
-    
-    func handleIncomingMessage(message MessageData) {
-        fmt.Printf("New message from %s: %s\n", message.From, message.Body)
-        
-        // Auto-reply example
-        if message.Body == "hello" {
-            sendReply(message.From, "Hello! How can I help you?")
-        }
-    }
-    
-    func sendReply(phone, message string) {
-        payload := map[string]string{
-            "phone":   phone,
-            "message": message,
-        }
-        
-        jsonData, _ := json.Marshal(payload)
-        
-        resp, err := http.Post("http://localhost:3000/send/message", 
-            "application/json", bytes.NewBuffer(jsonData))
-        if err != nil {
-            fmt.Printf("Failed to send reply: %v\n", err)
-            return
-        }
-        defer resp.Body.Close()
-        
-        fmt.Println("Reply sent successfully")
-    }
-    
-    func main() {
-        http.HandleFunc("/webhook", webhookHandler)
-        
-        fmt.Println("Webhook server running on port 8080")
-        log.Fatal(http.ListenAndServe(":8080", nil))
-    }
-    ```
-  </Tab>
-</Tabs>
+### Example: auto-reply bot
 
-## Message Types
-
-Handle different types of incoming messages:
-
-### Text Messages
+Verify the signature, acknowledge, then reply through the API with the same device:
 
 ```javascript
-function handleIncomingMessage(message) {
-  if (message.type === 'text') {
-    console.log(`Text message: ${message.body}`);
-    
-    // Command handling
-    if (message.body.startsWith('/')) {
-      handleCommand(message);
-    } else {
-      handleRegularMessage(message);
-    }
-  }
-}
+const express = require("express");
+const crypto = require("crypto");
 
-function handleCommand(message) {
-  const command = message.body.split(' ')[0].toLowerCase();
-  const args = message.body.split(' ').slice(1);
-  
-  switch (command) {
-    case '/help':
-      sendReply(message.from, 'Available commands:\n/help - Show this help\n/time - Get current time\n/weather - Get weather info');
-      break;
-    case '/time':
-      sendReply(message.from, `Current time: ${new Date().toLocaleString()}`);
-      break;
-    case '/weather':
-      const city = args.join(' ') || 'Jakarta';
-      // Integrate with weather API
-      sendReply(message.from, `Weather in ${city}: Sunny, 28°C`);
-      break;
-    default:
-      sendReply(message.from, 'Unknown command. Type /help for available commands.');
-  }
-}
-```
+const GOWA = "http://localhost:3000";
+const AUTH = "Basic " + Buffer.from("admin:changeme").toString("base64");
+const SECRET = "change-me";
 
-### Media Messages
+const app = express();
+app.post("/wa-hook", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = crypto.createHmac("sha256", SECRET).update(req.body).digest("hex");
+  if (req.get("X-Hub-Signature-256") !== `sha256=${sig}`) return res.sendStatus(401);
+  res.sendStatus(200);
 
-```javascript
-async function handleMediaMessage(message) {
-  if (message.hasMedia) {
-    console.log(`Media message received: ${message.type}`);
-    
-    try {
-      // Download media
-      const mediaResponse = await fetch(`http://localhost:3000/message/${message.id}/media`);
-      const mediaData = await mediaResponse.json();
-      
-      if (mediaData.code === 'SUCCESS') {
-        const mediaUrl = mediaData.results.url;
-        const fileName = mediaData.results.filename;
-        
-        console.log(`Media URL: ${mediaUrl}`);
-        console.log(`Filename: ${fileName}`);
-        
-        // Process media based on type
-        switch (message.type) {
-          case 'image':
-            await processImage(mediaUrl, message);
-            break;
-          case 'video':
-            await processVideo(mediaUrl, message);
-            break;
-          case 'audio':
-            await processAudio(mediaUrl, message);
-            break;
-          case 'document':
-            await processDocument(mediaUrl, message);
-            break;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to process media:', error);
-    }
-  }
-}
+  const evt = JSON.parse(req.body);
+  if (evt.event !== "message" || evt.payload.is_from_me) return;
+  if (!/^hi\b/i.test(evt.payload.body || "")) return;
 
-async function processImage(mediaUrl, message) {
-  // Download and process image
-  const response = await fetch(mediaUrl);
-  const buffer = await response.buffer();
-  
-  // Save or process the image
-  console.log(`Processing image of size: ${buffer.length} bytes`);
-  
-  // Send confirmation
-  sendReply(message.from, '✅ Image received and processed!');
-}
-```
-
-### Group Messages
-
-```javascript
-function handleGroupMessage(message) {
-  if (message.isGroup) {
-    console.log(`Group message in ${message.groupId} from ${message.participant}: ${message.body}`);
-    
-    // Handle mentions
-    if (message.body.includes('@everyone')) {
-      sendGroupReply(message.groupId, 'Hello everyone! 👋');
-    }
-    
-    // Moderation
-    if (containsInappropriateContent(message.body)) {
-      // Delete message and warn user
-      deleteMessage(message.id);
-      sendPrivateMessage(message.participant, 'Please keep the conversation respectful.');
-    }
-  }
-}
-
-function containsInappropriateContent(text) {
-  const bannedWords = ['spam', 'scam', 'inappropriate'];
-  return bannedWords.some(word => text.toLowerCase().includes(word));
-}
-```
-
-## Polling Method
-
-If webhooks are not suitable for your setup, you can poll for new messages:
-
-### Basic Polling
-
-```javascript
-class MessagePoller {
-  constructor(apiUrl, pollInterval = 5000) {
-    this.apiUrl = apiUrl;
-    this.pollInterval = pollInterval;
-    this.lastMessageId = null;
-    this.isPolling = false;
-  }
-  
-  start() {
-    if (this.isPolling) return;
-    
-    this.isPolling = true;
-    this.poll();
-  }
-  
-  stop() {
-    this.isPolling = false;
-  }
-  
-  async poll() {
-    while (this.isPolling) {
-      try {
-        const messages = await this.fetchNewMessages();
-        
-        for (const message of messages) {
-          this.handleMessage(message);
-        }
-        
-        await this.sleep(this.pollInterval);
-      } catch (error) {
-        console.error('Polling error:', error);
-        await this.sleep(this.pollInterval * 2); // Wait longer on error
-      }
-    }
-  }
-  
-  async fetchNewMessages() {
-    const url = this.lastMessageId 
-      ? `${this.apiUrl}/messages?after=${this.lastMessageId}`
-      : `${this.apiUrl}/messages?limit=10`;
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    if (data.code === 'SUCCESS' && data.results.length > 0) {
-      this.lastMessageId = data.results[data.results.length - 1].id;
-      return data.results;
-    }
-    
-    return [];
-  }
-  
-  handleMessage(message) {
-    console.log('New message:', message);
-    // Process message here
-  }
-  
-  sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-}
-
-// Usage
-const poller = new MessagePoller('http://localhost:3000');
-poller.start();
-
-// Stop polling when needed
-// poller.stop();
-```
-
-### Advanced Polling with State Management
-
-```javascript
-class AdvancedMessagePoller {
-  constructor(apiUrl, options = {}) {
-    this.apiUrl = apiUrl;
-    this.pollInterval = options.pollInterval || 5000;
-    this.maxRetries = options.maxRetries || 3;
-    this.processedMessages = new Set();
-    this.isPolling = false;
-  }
-  
-  async pollChatMessages(chatJid, limit = 50) {
-    try {
-      const response = await fetch(
-        `${this.apiUrl}/chat/${encodeURIComponent(chatJid)}/messages?limit=${limit}`
-      );
-      const data = await response.json();
-      
-      if (data.code === 'SUCCESS') {
-        return data.results.filter(msg => !this.processedMessages.has(msg.id));
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Failed to fetch chat messages:', error);
-      return [];
-    }
-  }
-  
-  async pollAllChats() {
-    try {
-      // Get list of all chats
-      const chatsResponse = await fetch(`${this.apiUrl}/chats`);
-      const chatsData = await chatsResponse.json();
-      
-      if (chatsData.code === 'SUCCESS') {
-        for (const chat of chatsData.results.data) {
-          const newMessages = await this.pollChatMessages(chat.jid, 10);
-          
-          for (const message of newMessages) {
-            this.handleMessage(message);
-            this.processedMessages.add(message.id);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to poll all chats:', error);
-    }
-  }
-  
-  handleMessage(message) {
-    console.log(`New message in ${message.chat_jid}: ${message.content}`);
-    
-    // Route to appropriate handler
-    if (message.media_type) {
-      this.handleMediaMessage(message);
-    } else {
-      this.handleTextMessage(message);
-    }
-  }
-  
-  handleTextMessage(message) {
-    // Process text message
-    if (message.content.startsWith('/')) {
-      this.handleCommand(message);
-    }
-  }
-  
-  handleMediaMessage(message) {
-    console.log(`Media message: ${message.media_type}, Size: ${message.file_length}`);
-  }
-  
-  handleCommand(message) {
-    const command = message.content.split(' ')[0];
-    console.log(`Command received: ${command}`);
-  }
-}
-```
-
-## Auto-Reply System
-
-Build an intelligent auto-reply system:
-
-```javascript
-class AutoReplySystem {
-  constructor(apiUrl) {
-    this.apiUrl = apiUrl;
-    this.rules = [];
-    this.contexts = new Map(); // Store conversation contexts
-  }
-  
-  addRule(pattern, response, options = {}) {
-    this.rules.push({
-      pattern: new RegExp(pattern, 'i'),
-      response,
-      ...options
-    });
-  }
-  
-  async handleMessage(message) {
-    if (message.fromMe) return; // Don't reply to own messages
-    
-    const userContext = this.getContext(message.from);
-    
-    // Check for rules
-    for (const rule of this.rules) {
-      if (rule.pattern.test(message.body)) {
-        let response = rule.response;
-        
-        // Dynamic response generation
-        if (typeof response === 'function') {
-          response = await response(message, userContext);
-        }
-        
-        // Template replacement
-        response = this.replaceTemplates(response, message, userContext);
-        
-        await this.sendReply(message.from, response);
-        
-        // Update context if needed
-        if (rule.updateContext) {
-          this.updateContext(message.from, rule.updateContext);
-        }
-        
-        break; // Stop after first match
-      }
-    }
-  }
-  
-  getContext(userJid) {
-    if (!this.contexts.has(userJid)) {
-      this.contexts.set(userJid, {
-        name: null,
-        lastActivity: new Date(),
-        conversationState: 'initial'
-      });
-    }
-    return this.contexts.get(userJid);
-  }
-  
-  updateContext(userJid, updates) {
-    const context = this.getContext(userJid);
-    Object.assign(context, updates, { lastActivity: new Date() });
-  }
-  
-  replaceTemplates(text, message, context) {
-    return text
-      .replace('{name}', context.name || 'there')
-      .replace('{time}', new Date().toLocaleTimeString())
-      .replace('{date}', new Date().toLocaleDateString());
-  }
-  
-  async sendReply(phone, message) {
-    try {
-      const response = await fetch(`${this.apiUrl}/send/message`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, message })
-      });
-      
-      const result = await response.json();
-      console.log('Auto-reply sent:', result);
-    } catch (error) {
-      console.error('Failed to send auto-reply:', error);
-    }
-  }
-}
-
-// Setup auto-reply rules
-const autoReply = new AutoReplySystem('http://localhost:3000');
-
-// Basic greetings
-autoReply.addRule(
-  '^(hi|hello|hey|good morning|good afternoon|good evening)',
-  'Hello! How can I help you today?'
-);
-
-// Business hours check
-autoReply.addRule(
-  '(hours|open|closed|timing)',
-  async () => {
-    const hour = new Date().getHours();
-    if (hour >= 9 && hour <= 17) {
-      return 'We are currently open! Our business hours are 9 AM to 5 PM.';
-    } else {
-      return 'We are currently closed. Our business hours are 9 AM to 5 PM. We\'ll respond to your message during business hours.';
-    }
-  }
-);
-
-// Name collection
-autoReply.addRule(
-  'my name is (.*)',
-  'Nice to meet you, {name}! How can I assist you?',
-  {
-    updateContext: (match) => ({ name: match[1] })
-  }
-);
-
-// FAQ responses
-autoReply.addRule(
-  '(pricing|price|cost|how much)',
-  'Our pricing varies based on your needs. Please visit our website or speak with our sales team for detailed pricing information.'
-);
-
-autoReply.addRule(
-  '(support|help|problem|issue)',
-  'I\'m here to help! Please describe your issue and I\'ll do my best to assist you or connect you with the right person.'
-);
-```
-
-## Message Queue System
-
-For high-volume applications, implement a message queue:
-
-```javascript
-class MessageQueue {
-  constructor(options = {}) {
-    this.queue = [];
-    this.processing = false;
-    this.maxConcurrent = options.maxConcurrent || 3;
-    this.retryAttempts = options.retryAttempts || 3;
-    this.delayBetweenMessages = options.delayBetweenMessages || 1000;
-  }
-  
-  addMessage(message) {
-    this.queue.push({
-      ...message,
-      attempts: 0,
-      addedAt: new Date()
-    });
-    
-    if (!this.processing) {
-      this.processQueue();
-    }
-  }
-  
-  async processQueue() {
-    if (this.processing) return;
-    
-    this.processing = true;
-    
-    while (this.queue.length > 0) {
-      const batch = this.queue.splice(0, this.maxConcurrent);
-      
-      const promises = batch.map(msg => this.processMessage(msg));
-      await Promise.allSettled(promises);
-      
-      if (this.queue.length > 0) {
-        await this.sleep(this.delayBetweenMessages);
-      }
-    }
-    
-    this.processing = false;
-  }
-  
-  async processMessage(message) {
-    try {
-      await this.handleMessage(message);
-      console.log(`Message processed: ${message.id}`);
-    } catch (error) {
-      console.error(`Failed to process message ${message.id}:`, error);
-      
-      message.attempts++;
-      if (message.attempts < this.retryAttempts) {
-        console.log(`Retrying message ${message.id}, attempt ${message.attempts}`);
-        this.queue.push(message);
-      } else {
-        console.error(`Message ${message.id} failed after ${this.retryAttempts} attempts`);
-      }
-    }
-  }
-  
-  async handleMessage(message) {
-    // Implement your message handling logic here
-    console.log('Processing message:', message);
-    
-    // Simulate API call delay
-    await this.sleep(Math.random() * 1000);
-  }
-  
-  sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-  
-  getStats() {
-    return {
-      queueLength: this.queue.length,
-      isProcessing: this.processing,
-      oldestMessage: this.queue.length > 0 ? this.queue[0].addedAt : null
-    };
-  }
-}
-
-// Usage
-const messageQueue = new MessageQueue({
-  maxConcurrent: 5,
-  retryAttempts: 3,
-  delayBetweenMessages: 500
+  await fetch(`${GOWA}/send/message`, {
+    method: "POST",
+    headers: {
+      Authorization: AUTH,
+      "Content-Type": "application/json",
+      "X-Device-Id": evt.session_id,          // reply from the slot that received it
+    },
+    body: JSON.stringify({
+      phone: evt.payload.chat_id,
+      message: "Hello! How can we help?",
+      reply_message_id: evt.payload.id,
+    }),
+  });
 });
-
-// Add messages to queue from webhook
-function handleIncomingMessage(message) {
-  messageQueue.addMessage(message);
-}
+app.listen(8080);
 ```
 
-## Best Practices
+For a fixed reply to every message, `WHATSAPP_AUTO_REPLY="We'll get back to you soon"` does this without any code.
 
-<AccordionGroup>
-  <Accordion icon="webhook" title="Webhook Security">
-    - Implement webhook signature verification
-    - Use HTTPS for webhook endpoints
-    - Validate incoming payloads
-    - Implement rate limiting on webhook endpoint
-    - Store and process messages asynchronously
-  </Accordion>
-  
-  <Accordion icon="database" title="Message Storage">
-    - Store all incoming messages for audit trails
-    - Implement message deduplication
-    - Use database transactions for consistency
-    - Archive old messages to manage storage
-    - Index frequently queried fields
-  </Accordion>
-  
-  <Accordion icon="performance" title="Performance">
-    - Process messages asynchronously
-    - Implement message queuing for high volume
-    - Use connection pooling for database
-    - Cache frequently accessed data
-    - Monitor processing times and queue lengths
-  </Accordion>
-  
-  <Accordion icon="shield" title="Error Handling">
-    - Always respond with 200 OK to webhooks
-    - Implement exponential backoff for retries
-    - Log all errors with sufficient context
-    - Set up alerting for high error rates
-    - Handle network timeouts gracefully
-  </Accordion>
-</AccordionGroup>
+See [Webhooks](/concepts/webhooks) for every event type, media fields, retries and per-device URLs.
 
-## Next Steps
+## Chat storage API
 
-<CardGroup cols={2}>
-  <Card title="Media Handling" icon="image" href="/examples/media-handling">
-    Process images, videos, and documents
-  </Card>
-  
-  <Card title="Group Management" icon="users" href="/examples/group-management">
-    Handle group messages and events
-  </Card>
-  
-  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
-    Deep dive into webhook configuration
-  </Card>
-  
-  <Card title="Error Handling" icon="triangle-exclamation" href="/advanced/error-handling">
-    Advanced error handling strategies
-  </Card>
-</CardGroup>
+GOWA records chats and messages for each slot in its local chat storage. Query it per device:
+
+```bash
+# list chats (filters: search, has_media, archived; paging: limit, offset)
+curl -u admin:changeme -H "X-Device-Id: my-device" \
+  "http://localhost:3000/chats?limit=20"
+
+# messages in one chat (filters: start_time, end_time, media_only, is_from_me, search)
+curl -u admin:changeme -H "X-Device-Id: my-device" \
+  "http://localhost:3000/chat/628987654321@s.whatsapp.net/messages?limit=50"
+```
+
+Only messages GOWA has seen (received while connected, or delivered by WhatsApp's history sync) are available. To ask the phone for older history in a chat, call `POST /chat/{chat_jid}/history` with `{"count": 50}`; the messages arrive asynchronously.
+
+Polling is suitable for catch-up and inbox views. For bots and automations, use webhooks.
+
+## Downloading media
+
+With auto-download on (default), the webhook gives a path under `statics/media/`, served at `http://localhost:3000/statics/media/<file>`. Otherwise fetch the media on demand:
+
+```bash
+curl -u admin:changeme -H "X-Device-Id: my-device" \
+  "http://localhost:3000/message/3EB0C127D7BACC83D6A3/download?phone=628987654321@s.whatsapp.net"
+```
+
+## Read receipts
+
+Mark a message read (blue ticks) with `POST /message/{message_id}/read` and `{"phone": "<chat_jid>"}`, or set `WHATSAPP_AUTO_MARK_READ=true` to mark every incoming message read automatically.

@@ -1,670 +1,169 @@
 ---
 title: "Sending Messages"
-description: "Learn how to send different types of messages using the WhatsApp API"
+description: "Send text, media, contacts, locations, links, polls and presence with the /send endpoints."
 ---
 
-## Overview
+All examples assume Basic Auth `admin:changeme`, a slot called `my-device`, and GOWA on `localhost:3000`.
 
-The WhatsApp API supports sending various types of messages including text, media, documents, contacts, locations, and more. This guide covers all the different message types you can send.
+```bash
+export GOWA=http://localhost:3000
+export AUTH=admin:changeme
+export DEVICE=my-device
+```
 
-## Text Messages
+## Recipients
 
-### Basic Text Message
+`phone` accepts:
+
+- A number with country code, no `+`, spaces or dashes: `628123456789` (a leading `+` is stripped).
+- A user JID: `628123456789@s.whatsapp.net`.
+- A group JID: `120363025246125486@g.us`.
+- `status@broadcast` to post a status update.
+
+With `WHATSAPP_ACCOUNT_VALIDATION=true` (default), GOWA checks that a number is on WhatsApp before sending. Check one yourself with `GET /user/check?phone=628123456789`.
+
+## Text
+
+```bash
+curl -u $AUTH -X POST $GOWA/send/message \
+  -H "Content-Type: application/json" -H "X-Device-Id: $DEVICE" \
+  -d '{"phone": "628123456789", "message": "Hello!"}'
+```
+
+Optional fields:
+
+| Field | Description |
+| --- | --- |
+| `reply_message_id` | Quote an earlier message. |
+| `mentions` | Phone numbers to mention, for example `["628111111111"]`; `"@everyone"` mentions every group member. Mentions do not need `@` in the text. |
+| `is_forwarded` | Show the "Forwarded" label. |
+| `duration` | Disappearing-message timer in seconds: `0`, `86400` (24 h), `604800` (7 d) or `7776000` (90 d). |
+| `allow_reshare` | Status posts only (`phone` = `status@broadcast`). |
+
+Successful sends return the WhatsApp message ID:
+
+```json
+{"code": "SUCCESS", "message": "Success", "results": {"message_id": "3EB0B430B6F8F1D0E053AC120E0A9E5C", "status": "Message sent to 628123456789 (server timestamp: ...)"}}
+```
+
+## Media
+
+Media endpoints take `multipart/form-data`. Upload a file, or pass a URL that GOWA downloads (`*_url`).
 
 <CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "message": "Hello! This is a test message from the API."
-  }'
+
+```bash Image
+curl -u $AUTH -X POST $GOWA/send/image -H "X-Device-Id: $DEVICE" \
+  -F phone=628123456789 \
+  -F caption="Product photo" \
+  -F image=@photo.jpg \
+  -F compress=true
 ```
 
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/message', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    message: 'Hello! This is a test message from the API.'
-  })
-});
-
-const result = await response.json();
-console.log('Message sent:', result);
+```bash Image from URL
+curl -u $AUTH -X POST $GOWA/send/image -H "X-Device-Id: $DEVICE" \
+  -F phone=628123456789 \
+  -F image_url=https://example.com/photo.jpg
 ```
 
-```python Python
-import requests
-
-url = "http://localhost:3000/send/message"
-payload = {
-    "phone": "6289685028129@s.whatsapp.net",
-    "message": "Hello! This is a test message from the API."
-}
-
-response = requests.post(url, json=payload)
-result = response.json()
-print("Message sent:", result)
+```bash Document
+curl -u $AUTH -X POST $GOWA/send/file -H "X-Device-Id: $DEVICE" \
+  -F phone=628123456789 \
+  -F caption="Invoice" \
+  -F file=@invoice.pdf
 ```
 
-```go Go
-package main
-
-import (
-    "bytes"
-    "encoding/json"
-    "fmt"
-    "net/http"
-)
-
-func sendTextMessage() {
-    url := "http://localhost:3000/send/message"
-    
-    payload := map[string]string{
-        "phone":   "6289685028129@s.whatsapp.net",
-        "message": "Hello! This is a test message from the API.",
-    }
-    
-    jsonData, _ := json.Marshal(payload)
-    
-    resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonData))
-    if err != nil {
-        fmt.Println("Error:", err)
-        return
-    }
-    defer resp.Body.Close()
-    
-    fmt.Println("Message sent successfully!")
-}
+```bash Video
+curl -u $AUTH -X POST $GOWA/send/video -H "X-Device-Id: $DEVICE" \
+  -F phone=628123456789 \
+  -F caption="Demo" \
+  -F video=@demo.mp4
 ```
+
+```bash Voice note
+curl -u $AUTH -X POST $GOWA/send/audio -H "X-Device-Id: $DEVICE" \
+  -F phone=628123456789 \
+  -F audio=@note.ogg \
+  -F ptt=true
+```
+
+```bash Sticker
+curl -u $AUTH -X POST $GOWA/send/sticker -H "X-Device-Id: $DEVICE" \
+  -F phone=628123456789 \
+  -F sticker=@cat.png
+```
+
 </CodeGroup>
 
-### Reply to Message
+| Endpoint | File field / URL field | Extra fields |
+| --- | --- | --- |
+| `/send/image` | `image` / `image_url` | `caption`, `view_once`, `compress`, `hd`, `mentions` |
+| `/send/video` | `video` / `video_url` | `caption`, `view_once`, `compress`, `hd`, `gif_playback`, `mentions` |
+| `/send/file` | `file` / `file_url` | `caption`, `mentions` |
+| `/send/audio` | `audio` / `audio_url` | `ptt` (send as voice note) |
+| `/send/sticker` | `sticker` / `sticker_url` | JPG, PNG, WebP or GIF; converted to WebP |
 
-Send a message as a reply to another message:
+All media endpoints also accept `reply_message_id`, `is_forwarded` and `duration`. See [Media handling](/examples/media-handling) for size limits and formats.
+
+## Contact, location, link, poll
 
 <CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "message": "This is a reply to your message!",
-    "reply_message_id": "3EB089B9D6ADD58153C561"
-  }'
+
+```bash Contact
+curl -u $AUTH -X POST $GOWA/send/contact \
+  -H "Content-Type: application/json" -H "X-Device-Id: $DEVICE" \
+  -d '{"phone": "628123456789", "contact_name": "Jane Doe", "contact_phone": "628987654321"}'
 ```
 
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/message', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    message: 'This is a reply to your message!',
-    reply_message_id: '3EB089B9D6ADD58153C561'
-  })
-});
+```bash Location
+curl -u $AUTH -X POST $GOWA/send/location \
+  -H "Content-Type: application/json" -H "X-Device-Id: $DEVICE" \
+  -d '{"phone": "628123456789", "latitude": "-6.200000", "longitude": "106.816666"}'
 ```
+
+```bash Link
+curl -u $AUTH -X POST $GOWA/send/link \
+  -H "Content-Type: application/json" -H "X-Device-Id: $DEVICE" \
+  -d '{"phone": "628123456789", "link": "https://github.com", "caption": "Check this out"}'
+```
+
+```bash Poll
+curl -u $AUTH -X POST $GOWA/send/poll \
+  -H "Content-Type: application/json" -H "X-Device-Id: $DEVICE" \
+  -d '{"phone": "628123456789", "question": "Lunch?", "options": ["Pizza", "Sushi", "Salad"], "max_answer": 1}'
+```
+
 </CodeGroup>
 
-### Disappearing Message
+## Presence and typing
 
-Send a message that disappears after a specified duration:
+```bash
+# account-wide presence: available | unavailable
+curl -u $AUTH -X POST $GOWA/send/presence \
+  -H "Content-Type: application/json" -H "X-Device-Id: $DEVICE" \
+  -d '{"type": "available"}'
 
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/message \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "message": "This message will disappear in 1 hour",
-    "duration": 3600
-  }'
+# typing indicator in one chat: start | stop
+curl -u $AUTH -X POST $GOWA/send/chat-presence \
+  -H "Content-Type: application/json" -H "X-Device-Id: $DEVICE" \
+  -d '{"phone": "628123456789", "action": "start"}'
 ```
 
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/message', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    message: 'This message will disappear in 1 hour',
-    duration: 3600 // 1 hour in seconds
-  })
-});
-```
-</CodeGroup>
+## After sending
 
-## Media Messages
+| Task | Endpoint |
+| --- | --- |
+| Edit | `POST /message/{message_id}/update` with `phone`, `message` |
+| React | `POST /message/{message_id}/reaction` with `phone`, `emoji` |
+| Delete for everyone | `POST /message/{message_id}/revoke` with `phone` |
+| Delete for me | `POST /message/{message_id}/delete` with `phone` |
+| Forward | `POST /message/{message_id}/forward` with `phone` (destination). The source message must be in GOWA's local chat storage. |
+| Star / unstar | `POST /message/{message_id}/star`, `/unstar` with `phone` |
 
-### Send Image
+## Send later
 
-<Tabs>
-  <Tab title="File Upload">
-    ```bash
-    curl -X POST http://localhost:3000/send/image \
-      -F "phone=6289685028129@s.whatsapp.net" \
-      -F "caption=Check out this beautiful sunset!" \
-      -F "image=@/path/to/sunset.jpg"
-    ```
-  </Tab>
-  
-  <Tab title="URL Upload">
-    ```bash
-    curl -X POST http://localhost:3000/send/image \
-      -H "Content-Type: application/json" \
-      -d '{
-        "phone": "6289685028129@s.whatsapp.net",
-        "caption": "Image from URL",
-        "image_url": "https://example.com/image.jpg"
-      }'
-    ```
-  </Tab>
-  
-  <Tab title="JavaScript">
-    ```javascript
-    // File upload
-    const formData = new FormData();
-    formData.append('phone', '6289685028129@s.whatsapp.net');
-    formData.append('caption', 'Check out this image!');
-    formData.append('image', fileInput.files[0]);
-    
-    const response = await fetch('http://localhost:3000/send/image', {
-      method: 'POST',
-      body: formData
-    });
-    
-    // URL upload
-    const response2 = await fetch('http://localhost:3000/send/image', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        phone: '6289685028129@s.whatsapp.net',
-        caption: 'Image from URL',
-        image_url: 'https://example.com/image.jpg'
-      })
-    });
-    ```
-  </Tab>
-</Tabs>
+Add `scheduled_at` and `timezone` to any send request to schedule it instead. See [Scheduled sends](/examples/scheduled-sends).
 
-### Send Video
+## Sending to many recipients
 
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/video \
-  -F "phone=6289685028129@s.whatsapp.net" \
-  -F "caption=Amazing video content!" \
-  -F "video=@/path/to/video.mp4"
-```
-
-```javascript JavaScript
-const formData = new FormData();
-formData.append('phone', '6289685028129@s.whatsapp.net');
-formData.append('caption', 'Amazing video content!');
-formData.append('video', videoFile);
-
-const response = await fetch('http://localhost:3000/send/video', {
-  method: 'POST',
-  body: formData
-});
-```
-</CodeGroup>
-
-### Send Audio
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/audio \
-  -F "phone=6289685028129@s.whatsapp.net" \
-  -F "audio=@/path/to/audio.mp3"
-```
-
-```javascript JavaScript
-const formData = new FormData();
-formData.append('phone', '6289685028129@s.whatsapp.net');
-formData.append('audio', audioFile);
-
-const response = await fetch('http://localhost:3000/send/audio', {
-  method: 'POST',
-  body: formData
-});
-```
-</CodeGroup>
-
-### Send Document
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/file \
-  -F "phone=6289685028129@s.whatsapp.net" \
-  -F "caption=Important document attached" \
-  -F "file=@/path/to/document.pdf"
-```
-
-```javascript JavaScript
-const formData = new FormData();
-formData.append('phone', '6289685028129@s.whatsapp.net');
-formData.append('caption', 'Important document attached');
-formData.append('file', documentFile);
-
-const response = await fetch('http://localhost:3000/send/file', {
-  method: 'POST',
-  body: formData
-});
-```
-</CodeGroup>
-
-## Contact & Location
-
-### Send Contact
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/contact \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "contact_name": "John Doe",
-    "contact_phone": "628123456789"
-  }'
-```
-
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/contact', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    contact_name: 'John Doe',
-    contact_phone: '628123456789'
-  })
-});
-```
-</CodeGroup>
-
-### Send Location
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/location \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "latitude": "-7.797068",
-    "longitude": "110.370529"
-  }'
-```
-
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/location', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    latitude: '-7.797068',
-    longitude: '110.370529'
-  })
-});
-```
-</CodeGroup>
-
-## Interactive Messages
-
-### Send Link with Preview
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/link \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "link": "https://github.com/aldinokemal/go-whatsapp-web-multidevice",
-    "caption": "Check out this awesome WhatsApp API project!"
-  }'
-```
-
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/link', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    link: 'https://github.com/aldinokemal/go-whatsapp-web-multidevice',
-    caption: 'Check out this awesome WhatsApp API project!'
-  })
-});
-```
-</CodeGroup>
-
-### Send Poll
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/poll \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "question": "What is your favorite programming language?",
-    "options": ["JavaScript", "Python", "Go", "Java", "TypeScript"],
-    "max_answer": 1
-  }'
-```
-
-```javascript JavaScript
-const response = await fetch('http://localhost:3000/send/poll', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    question: 'What is your favorite programming language?',
-    options: ['JavaScript', 'Python', 'Go', 'Java', 'TypeScript'],
-    max_answer: 1
-  })
-});
-```
-</CodeGroup>
-
-## Presence & Status
-
-### Send Typing Indicator
-
-<CodeGroup>
-```bash cURL
-# Start typing
-curl -X POST http://localhost:3000/send/chat-presence \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "action": "start"
-  }'
-
-# Stop typing
-curl -X POST http://localhost:3000/send/chat-presence \
-  -H "Content-Type: application/json" \
-  -d '{
-    "phone": "6289685028129@s.whatsapp.net",
-    "action": "stop"
-  }'
-```
-
-```javascript JavaScript
-// Start typing indicator
-await fetch('http://localhost:3000/send/chat-presence', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    phone: '6289685028129@s.whatsapp.net',
-    action: 'start'
-  })
-});
-
-// Send message after a delay
-setTimeout(async () => {
-  await fetch('http://localhost:3000/send/message', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      phone: '6289685028129@s.whatsapp.net',
-      message: 'Hello! I was typing this message.'
-    })
-  });
-}, 2000);
-```
-</CodeGroup>
-
-### Update Presence Status
-
-<CodeGroup>
-```bash cURL
-curl -X POST http://localhost:3000/send/presence \
-  -H "Content-Type: application/json" \
-  -d '{
-    "type": "available"
-  }'
-```
-
-```javascript JavaScript
-// Set as available
-await fetch('http://localhost:3000/send/presence', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    type: 'available'
-  })
-});
-
-// Set as unavailable
-await fetch('http://localhost:3000/send/presence', {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    type: 'unavailable'
-  })
-});
-```
-</CodeGroup>
-
-## Bulk Messaging
-
-### Send to Multiple Recipients
-
-```javascript
-const recipients = [
-  '6289685028129@s.whatsapp.net',
-  '6289685028130@s.whatsapp.net',
-  '6289685028131@s.whatsapp.net'
-];
-
-const message = 'Hello! This is a bulk message.';
-
-// Send messages with delay to avoid rate limiting
-for (const phone of recipients) {
-  try {
-    const response = await fetch('http://localhost:3000/send/message', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        phone,
-        message
-      })
-    });
-    
-    const result = await response.json();
-    console.log(`Message sent to ${phone}:`, result);
-    
-    // Add delay between messages
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  } catch (error) {
-    console.error(`Failed to send to ${phone}:`, error);
-  }
-}
-```
-
-## Advanced Features
-
-### Message Templates
-
-```javascript
-class MessageTemplate {
-  static welcome(name) {
-    return `Hello ${name}! 👋\n\nWelcome to our service. We're excited to have you on board!\n\nIf you have any questions, feel free to ask.`;
-  }
-  
-  static orderConfirmation(orderNumber, total) {
-    return `✅ Order Confirmed!\n\nOrder #: ${orderNumber}\nTotal: $${total}\n\nThank you for your purchase. We'll notify you when your order ships.`;
-  }
-  
-  static reminder(eventName, date) {
-    return `⏰ Reminder: ${eventName}\n\nDate: ${date}\n\nDon't forget about your upcoming event!`;
-  }
-}
-
-// Usage
-const welcomeMsg = MessageTemplate.welcome('John Doe');
-await sendMessage('6289685028129@s.whatsapp.net', welcomeMsg);
-```
-
-### Message Scheduling
-
-```javascript
-function scheduleMessage(phone, message, delayMs) {
-  return setTimeout(async () => {
-    try {
-      const response = await fetch('http://localhost:3000/send/message', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          phone,
-          message
-        })
-      });
-      
-      console.log('Scheduled message sent:', await response.json());
-    } catch (error) {
-      console.error('Failed to send scheduled message:', error);
-    }
-  }, delayMs);
-}
-
-// Schedule a message for 1 hour later
-scheduleMessage(
-  '6289685028129@s.whatsapp.net',
-  'This is a scheduled message!',
-  60 * 60 * 1000 // 1 hour
-);
-```
-
-## Error Handling
-
-### Robust Message Sending
-
-```javascript
-async function sendMessageWithRetry(phone, message, maxRetries = 3) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await fetch('http://localhost:3000/send/message', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          phone,
-          message
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const result = await response.json();
-      
-      if (result.code === 'SUCCESS') {
-        console.log('Message sent successfully:', result);
-        return result;
-      } else {
-        throw new Error(result.message);
-      }
-    } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error.message);
-      
-      if (attempt === maxRetries) {
-        throw new Error(`Failed to send message after ${maxRetries} attempts: ${error.message}`);
-      }
-      
-      // Wait before retry (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-    }
-  }
-}
-
-// Usage
-try {
-  await sendMessageWithRetry('6289685028129@s.whatsapp.net', 'Hello World!');
-} catch (error) {
-  console.error('Failed to send message:', error);
-}
-```
-
-## Best Practices
-
-<AccordionGroup>
-  <Accordion icon="clock" title="Rate Limiting">
-    - Add delays between messages (minimum 1 second)
-    - Monitor rate limit headers in responses
-    - Implement exponential backoff for retries
-    - Use bulk messaging queues for large volumes
-  </Accordion>
-  
-  <Accordion icon="shield" title="Message Validation">
-    - Always validate phone numbers before sending
-    - Check message length limits (4096 characters for text)
-    - Verify media file sizes and formats
-    - Sanitize user input to prevent injection
-  </Accordion>
-  
-  <Accordion icon="users" title="User Experience">
-    - Use typing indicators for better UX
-    - Send media with descriptive captions
-    - Structure long messages with line breaks
-    - Use emojis sparingly for emphasis
-  </Accordion>
-  
-  <Accordion icon="chart-line" title="Monitoring">
-    - Log all message attempts and results
-    - Track delivery rates and failures
-    - Monitor API response times
-    - Set up alerts for high failure rates
-  </Accordion>
-</AccordionGroup>
-
-## Next Steps
-
-<CardGroup cols={2}>
-  <Card title="Receiving Messages" icon="inbox" href="/examples/receiving-messages">
-    Learn how to handle incoming messages and webhooks
-  </Card>
-  
-  <Card title="Media Handling" icon="image" href="/examples/media-handling">
-    Advanced media processing and handling
-  </Card>
-  
-  <Card title="Group Management" icon="users" href="/examples/group-management">
-    Create and manage WhatsApp groups
-  </Card>
-  
-  <Card title="Rate Limiting" icon="gauge" href="/advanced/rate-limiting">
-    Understand API limits and best practices
-  </Card>
-</CardGroup>
+GOWA has no broadcast endpoint. Loop over recipients in your code, send one request at a time with a delay, and stop on `WA_REACHOUT_TIMELOCK` errors. Read [Sending limits](/advanced/rate-limiting) before sending in volume.

@@ -1,157 +1,75 @@
 ---
-title: "WhatsApp API MultiDevice"
-description: "Send and receive WhatsApp messages programmatically with our robust multidevice API"
+title: "GOWA: WhatsApp REST API"
+sidebarTitle: "Introduction"
+description: "Self-hosted WhatsApp Web multi-device API in Go: a REST API, webhooks, an MCP server and Chatwoot integration in one binary."
 ---
 
 <img
   className="block dark:hidden"
   src="/images/hero-light.png"
-  alt="WhatsApp API MultiDevice Hero Light"
+  alt="GOWA hero (light)"
 />
+
 <img
   className="hidden dark:block"
   src="/images/hero-dark.png"
-  alt="WhatsApp API MultiDevice Hero Dark"
+  alt="GOWA hero (dark)"
 />
 
-## What is WhatsApp API MultiDevice?
+GOWA ([go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)) is a self-hosted server that links to WhatsApp as a companion device, the same way WhatsApp Web does, and exposes it over HTTP. It is a single Go binary (`whatsapp rest`) built on [whatsmeow](https://github.com/tulir/whatsmeow). These docs track **v9.7.0**.
 
-WhatsApp API MultiDevice is a robust Go-based API that allows you to send and receive WhatsApp messages programmatically. Built on top of the WhatsApp Web MultiDevice protocol, it provides a reliable and scalable solution for businesses and developers.
+<Warning>
+  GOWA is an unofficial client. It is not affiliated with WhatsApp or Meta, and using it can get a number restricted or banned. Do not use it for spam or bulk unsolicited messaging.
+</Warning>
 
-## Key Features
-
-<CardGroup cols={2}>
-  <Card
-    title="MultiDevice Support"
-    icon="mobile"
-    href="/concepts/multidevice"
-  >
-    Connect multiple devices to the same WhatsApp account simultaneously
-  </Card>
-  <Card
-    title="Real-time Messaging"
-    icon="message"
-    href="/examples/sending-messages"
-  >
-    Send and receive text, media, and document messages in real-time
-  </Card>
-  <Card
-    title="Group Management"
-    icon="users"
-    href="/examples/group-management"
-  >
-    Create, manage, and interact with WhatsApp groups programmatically
-  </Card>
-  <Card
-    title="Webhook Support"
-    icon="webhook"
-    href="/concepts/webhooks"
-  >
-    Receive instant notifications for incoming messages and events
-  </Card>
-</CardGroup>
-
-## Quick Start
-
-Get started with WhatsApp API MultiDevice in under 5 minutes.
-
-<Card
-  title="Installation & Setup"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Install and configure the API in minutes with our step-by-step guide.
-</Card>
-
-## API Reference
+## What one server gives you
 
 <CardGroup cols={2}>
-  <Card
-    title="Authentication"
-    icon="key"
-    href="/api-reference/authentication"
-  >
-    Learn how to authenticate and manage your API connections
+  <Card title="Multiple accounts" icon="users" href="/concepts/multidevice">
+    Run several WhatsApp numbers on one server. Each is a device slot, selected per request with `X-Device-Id`.
   </Card>
-  <Card
-    title="Send Messages"
-    icon="paper-plane"
-    href="/api-reference/openapi#tag/send"
-  >
-    Send text, images, videos, documents, and more
+  <Card title="REST API" icon="code" href="/api-reference/introduction">
+    Send text, media, polls, locations and contacts. Manage chats, groups, newsletters and your profile.
   </Card>
-  <Card
-    title="Manage Users"
-    icon="user"
-    href="/api-reference/openapi#tag/user"
-  >
-    Get user information, avatars, and check WhatsApp status
+  <Card title="Webhooks" icon="webhook" href="/concepts/webhooks">
+    Signed HTTP callbacks for messages, receipts, reactions, group, call and newsletter events.
   </Card>
-  <Card
-    title="Group Operations"
-    icon="users-gear"
-    href="/api-reference/openapi#tag/group"
-  >
-    Create groups, manage participants, and configure settings
+  <Card title="Scheduled sends" icon="clock" href="/examples/scheduled-sends">
+    Send any message later, once or on a daily, weekly or monthly repeat.
+  </Card>
+  <Card title="MCP server" icon="robot" href="/integrations/mcp">
+    Streamable-HTTP MCP endpoint at `/mcp` so AI agents can send and read messages.
+  </Card>
+  <Card title="Chatwoot" icon="headset" href="/integrations/chatwoot">
+    Mirror WhatsApp conversations into a Chatwoot inbox and reply from Chatwoot.
   </Card>
 </CardGroup>
 
-## Integrations & SDKs
+A web dashboard ([gowa-ui](https://github.com/aldinokemal/gowa-ui)) is served at `/` for pairing devices and trying the API by hand.
 
-<CardGroup cols={3}>
-  <Card
-    title="Go SDK"
-    icon="golang"
-    href="/api-reference/sdks/go"
-  >
-    Native Go client library
-  </Card>
-  <Card
-    title="JavaScript/Node.js"
-    icon="js"
-    href="/api-reference/sdks/javascript"
-  >
-    NPM package for Node.js
-  </Card>
-  <Card
-    title="Python"
-    icon="python"
-    href="/api-reference/sdks/python"
-  >
-    Python wrapper library
-  </Card>
-</CardGroup>
+## Get started
 
-## Production Ready
+<Steps>
+  <Step title="Run GOWA">
+    Start it with Docker or a release binary. See the [Quickstart](/quickstart).
+  </Step>
+  <Step title="Create a device and pair it">
+    `POST /devices`, then scan the QR code or use a pairing code. See [Authentication](/authentication).
+  </Step>
+  <Step title="Send a message">
+    `POST /send/message` with Basic Auth and `X-Device-Id`.
+  </Step>
+  <Step title="Receive events">
+    Point `WHATSAPP_WEBHOOK` at your endpoint. See [Webhooks](/concepts/webhooks).
+  </Step>
+</Steps>
 
-<CardGroup cols={2}>
-  <Card
-    title="Rate Limiting"
-    icon="gauge-high"
-    href="/advanced/rate-limiting"
-  >
-    Built-in rate limiting to comply with WhatsApp policies
-  </Card>
-  <Card
-    title="Error Handling"
-    icon="triangle-exclamation"
-    href="/advanced/error-handling"
-  >
-    Comprehensive error handling and retry mechanisms
-  </Card>
-  <Card
-    title="Best Practices"
-    icon="star"
-    href="/advanced/best-practices"
-  >
-    Follow our guidelines for optimal performance and reliability
-  </Card>
-  <Card
-    title="Monitoring"
-    icon="chart-line"
-    href="/advanced/monitoring"
-  >
-    Monitor your API usage and performance metrics
-  </Card>
-</CardGroup>
+## Not included
+
+- **Official SDKs.** There are none. Call the HTTP API directly (see [Client examples](/api-reference/sdks/go)) or generate a client from the [OpenAPI spec](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml). A community n8n node exists: [`@aldinokemal2104/n8n-nodes-gowa`](https://www.npmjs.com/package/@aldinokemal2104/n8n-nodes-gowa).
+- **Rate limiting.** GOWA does not throttle requests. See [Sending limits](/advanced/rate-limiting).
+
+## Support
+
+- [GitHub issues](https://github.com/aldinokemal/go-whatsapp-web-multidevice/issues)
+- [Releases and changelog](https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases)

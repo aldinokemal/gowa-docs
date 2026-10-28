@@ -1,0 +1,113 @@
+---
+title: "MCP Server"
+description: "Let AI agents use WhatsApp through GOWA's built-in Model Context Protocol endpoint at /mcp."
+sidebarTitle: "MCP Server"
+icon: "robot"
+---
+
+GOWA serves a [Model Context Protocol](https://modelcontextprotocol.io) endpoint from the same process as the REST API. Any MCP client that supports the **streamable HTTP** transport can send messages, read chats and manage groups through it.
+
+- URL: `http://<host>:3000<APP_BASE_PATH>/mcp` (default `http://localhost:3000/mcp`)
+- Enabled by default. Disable with `MCP_ENABLED=false` or `--mcp-enabled=false`.
+- Stateless: no session handshake to keep alive between calls.
+
+<Note>
+Upgrading from an older release? The standalone `./whatsapp mcp` command and its SSE endpoint on port 8080 (`/sse`) are gone. Run `./whatsapp rest` and point clients at `/mcp`. The old one-tool-per-operation set was replaced by the consolidated tools below.
+</Note>
+
+## Connect a client
+
+`/mcp` sits behind the same Basic Auth as the REST API. Send the `Authorization` header, plus `X-Device-Id` if you run more than one device:
+
+```json
+{
+  "mcpServers": {
+    "whatsapp": {
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Basic YWRtaW46Y2hhbmdlbWU=",
+        "X-Device-Id": "my-device"
+      }
+    }
+  }
+}
+```
+
+`YWRtaW46Y2hhbmdlbWU=` is `base64("admin:changeme")`; generate yours with `echo -n 'user:pass' | base64`. Omit `Authorization` if Basic Auth is off, and `X-Device-Id` if there is only one device.
+
+The exact config format depends on the client. If a client can only launch stdio servers, use a bridge such as `mcp-remote`.
+
+## Tools
+
+GOWA exposes six tools. Each takes a `type` (send) or `action` (all others) argument that selects the operation.
+
+| Tool | `type` / `action` values |
+|---|---|
+| `whatsapp_send` | `text`, `image`, `video`, `audio`, `document`, `sticker`, `location`, `contact`, `poll`, `link`, `forward` |
+| `whatsapp_schedule` | `list`, `get`, `pause`, `resume`, `cancel` |
+| `whatsapp_message` | `react`, `edit`, `revoke`, `delete`, `mark_read`, `mark_played`, `star`, `unstar`, `download_media` |
+| `whatsapp_chat` | `list_chats`, `list_contacts`, `get_messages`, `archive` |
+| `whatsapp_group` | `create`, `join_with_link`, `leave`, `info`, `participants`, `add_participants`, `remove_participants`, `promote`, `demote`, `invite_link`, `set_name`, `set_topic`, `set_settings`, `join_requests`, `manage_join_requests` |
+| `whatsapp_app` | `status`, `login_qr`, `login_code`, `logout`, `reconnect` |
+
+Notes on arguments:
+
+- `whatsapp_send` always needs `type` and `phone`. Media is sent **by URL only** (`image_url`, `video_url`, `audio_url`, `file_url`, `sticker_url`); MCP cannot upload local files. `link` needs `link` and `caption`; `forward` needs `message_id`.
+- `whatsapp_send` accepts the [schedule fields](/examples/scheduled-sends) (`scheduled_at`, `timezone`, `recurrence`, `weekdays`, `day_of_month`, `end_at`, `occurrence_limit`). Manage the result with `whatsapp_schedule` (`get`, `pause`, `resume` and `cancel` need `schedule_id`).
+- `whatsapp_message` needs `phone` (the chat) and `message_id`; `edit` also needs `message`.
+- `whatsapp_chat`: `get_messages` needs `chat_jid`; `archive` needs `chat_jid` and `archived`.
+- `whatsapp_app`: `login_code` needs `phone`.
+
+Your MCP client shows the full input schema of each tool.
+
+## Device selection
+
+Each call resolves its device in this order:
+
+1. The `device_id` argument on the tool call.
+2. The `X-Device-Id` header on the MCP connection.
+3. The only registered device, when exactly one exists.
+
+Otherwise the call fails with `device identification required: set the X-Device-Id header or pass device_id`. See [Multi-device](/concepts/multidevice).
+
+## Remote clients with OAuth
+
+Hosted clients such as Claude custom connectors cannot attach a Basic Auth header. For them, GOWA can run an OAuth 2.1 authorization server for `/mcp`. It is off by default.
+
+```env
+APP_BASIC_AUTH=admin:replace-with-a-strong-password
+MCP_ENABLED=true
+MCP_OAUTH_ENABLED=true
+MCP_OAUTH_ISSUER_URL=https://gowa.example.com
+# optional, defaults to issuer + APP_BASE_PATH + /mcp
+MCP_OAUTH_RESOURCE_URL=https://gowa.example.com/mcp
+```
+
+Requirements and behavior:
+
+- `APP_BASIC_AUTH` must be set: the authorization page signs users in with those same accounts. Startup fails without it.
+- Issuer and resource must be the **public HTTPS** URLs clients see, not internal addresses like `http://gowa:3000`.
+- With OAuth on, `/mcp` accepts a Bearer token **or** Basic Auth. Tokens are not accepted on REST or UI routes.
+- Clients register themselves (RFC 7591 dynamic client registration). Registrations are limited to 40 per hour and 1,000 stored clients; unused ones are pruned after 24 hours.
+- PKCE `S256` is mandatory. Codes expire after 5 minutes, access tokens after 1 hour; refresh tokens rotate, and reusing an old one revokes the whole token family. Only SHA-256 hashes of tokens are stored, in `MCP_OAUTH_DB_URI` (default `file:storages/oauth.db`).
+
+Endpoints, relative to the issuer: `/oauth/authorize`, `/oauth/token`, `/oauth/register`. Discovery metadata uses path-insertion well-known URLs at the domain root, so with `APP_BASE_PATH=/gowa` your proxy must route:
+
+```text
+https://gowa.example.com/.well-known/oauth-authorization-server/gowa
+https://gowa.example.com/.well-known/oauth-protected-resource/gowa/mcp
+```
+
+Check discovery from outside:
+
+```bash
+curl -i -X POST https://gowa.example.com/mcp          # expect 401 with a Bearer challenge
+curl https://gowa.example.com/.well-known/oauth-protected-resource/mcp
+curl https://gowa.example.com/.well-known/oauth-authorization-server
+```
+
+Then add `https://gowa.example.com/mcp` as a custom connector and sign in with an `APP_BASIC_AUTH` account.
+
+<Warning>
+Make sure Cloudflare Access, bot challenges or auth proxies in front of GOWA do not intercept the well-known, `/oauth/*` or `/mcp` paths. Rate-limit failed logins on `/oauth/authorize` at your proxy.
+</Warning>
