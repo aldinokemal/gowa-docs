@@ -22,7 +22,7 @@ mint broken-links
 
 ## Maintain the API reference
 
-`docs.json` generates endpoint pages from `openapi.yml`. Start with GOWA's `docs/openapi.yaml`, then verify changed routes, DTOs, validation, and response envelopes against the implementation. The current local spec also documents the merged `/send/interactive` route, which is absent from the source spec at the audited revision.
+`docs.json` generates endpoint pages from `openapi.yml`. Start with GOWA's `docs/openapi.yaml`, then verify changed routes, DTOs, validation, and response envelopes against the implementation. Keep `openapi.yml` synchronized with the source specification, including `/send/interactive`.
 
 The guides track merged `main`, including changes after v9.7.0. Do not describe open PRs as available features. Release binaries and pinned container tags may lag behind these docs.
 

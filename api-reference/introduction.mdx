@@ -40,7 +40,7 @@ See [Multi-device](/concepts/multidevice).
 | Newsletter | Follow, unfollow, channel info, directory, messages, counters, live updates, and media download. |
 | Call | Reject incoming calls. |
 
-The endpoint pages in this tab are generated from GOWA's OpenAPI specification. The starting contract is [`docs/openapi.yaml`](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml) in the server repository. This site uses its local `openapi.yml`, including the merged `/send/interactive` route that is absent from the source specification at the audited revision. The [interactive guide](/examples/interactive-messages) records its current limits.
+The endpoint pages in this tab are generated from GOWA's OpenAPI specification. The authoritative contract is [`docs/openapi.yaml`](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml) in the server repository. This site uses a synchronized copy in `openapi.yml`, including `/send/interactive`. The [interactive guide](/examples/interactive-messages) records its current limits.
 
 ## Requests
 
