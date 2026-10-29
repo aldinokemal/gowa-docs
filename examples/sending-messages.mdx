@@ -149,6 +149,8 @@ curl -u $AUTH -X POST $GOWA/send/chat-presence \
   -d '{"phone": "628123456789", "action": "start"}'
 ```
 
+For native-flow buttons, location requests, and image carousels, see [Experimental interactive messages](/examples/interactive-messages).
+
 ## After sending
 
 | Task | Endpoint |
@@ -162,7 +164,7 @@ curl -u $AUTH -X POST $GOWA/send/chat-presence \
 
 ## Send later
 
-Add `scheduled_at` and `timezone` to any send request to schedule it instead. See [Scheduled sends](/examples/scheduled-sends).
+Add `scheduled_at` and `timezone` to a supported send request to schedule it instead. `/send/interactive` is immediate-only. See [Scheduled sends](/examples/scheduled-sends).
 
 ## Sending to many recipients
 

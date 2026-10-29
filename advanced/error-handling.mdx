@@ -32,6 +32,9 @@ Every JSON response has the same shape:
 | `AUTHENTICATION_ERROR` | 401 | The device is not logged in to WhatsApp (or WhatsApp authentication failed). | Check `/devices/{id}/status`; pair again if needed. |
 | `NOT_FOUND` | 404 | Resource not found (message, chat, schedule…). | Check the ID. |
 | `DEVICE_NOT_FOUND` | 404 | `X-Device-Id` names an unknown device. | Check the slot ID or JID. |
+| `AVATAR_HIDDEN` | 403 | Profile picture is hidden by privacy settings. | Do not treat this as confirmed absence or erase a cached picture solely on this result. |
+| `AVATAR_NOT_SET` | 404 | Contact has no profile picture. | Clear a cached picture only after checking this code, not any 404. |
+| `CROSS_SITE_REQUEST_BLOCKED` | 403 | Browser origin is not trusted. | Serve the dashboard over HTTP(S) and configure the exact trusted origin. |
 | `CONTEXT_ERROR` | 408 | The operation was cancelled or timed out internally. | Retry once. |
 | `WA_REACHOUT_TIMELOCK` | 429 | WhatsApp temporarily blocks new chats from this account. | Stop outreach; see [Sending limits](/advanced/rate-limiting). |
 | `INTERNAL_SERVER_ERROR` | 500 | Unexpected failure, including recovered panics. | Retry with backoff; check logs. |

@@ -1,5 +1,6 @@
 ---
 title: "Quickstart"
+keywords: ["quickstart", "Docker", "WhatsApp API"]
 description: "Run GOWA, pair a WhatsApp account and send your first message in a few minutes."
 ---
 
@@ -48,7 +49,7 @@ curl http://localhost:3000/health
 ```
 
 <Note>
-  Basic Auth is optional but strongly recommended. Without `APP_BASIC_AUTH`, every route except `/health` is open to anyone who can reach the port.
+  The default non-loopback listener requires complete `APP_BASIC_AUTH` credentials. For unauthenticated local development, bind `APP_HOST=127.0.0.1`. An authenticating reverse proxy can use the explicit `APP_ALLOW_UNAUTHENTICATED=true` override. See [authentication](/authentication).
 </Note>
 
 ## 2. Create a device
@@ -119,10 +120,11 @@ curl -u admin:changeme -X POST http://localhost:3000/send/message \
 Restart with a webhook URL and GOWA will POST every event to it:
 
 ```bash
-./whatsapp rest --basic-auth=admin:changeme --webhook=https://example.com/wa-hook --webhook-secret=change-me
+export WHATSAPP_WEBHOOK_SECRET="$(openssl rand -hex 32)"
+./whatsapp rest --basic-auth=admin:changeme --webhook=https://example.com/wa-hook
 ```
 
-See [Webhooks](/concepts/webhooks) for payloads and signature checks.
+Save the generated webhook secret and configure the same value on your receiver. Reuse it after restarts. See [Webhooks](/concepts/webhooks) for payloads and signature checks.
 
 ## Next steps
 

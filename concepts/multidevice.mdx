@@ -1,5 +1,6 @@
 ---
 title: "Multi-Device & Device Selection"
+keywords: ["multi-device", "device scope", "WebSocket"]
 sidebarTitle: "Multi-Device"
 description: "Run several WhatsApp accounts on one GOWA server and choose which one each request uses with X-Device-Id."
 ---
@@ -51,7 +52,7 @@ curl -u admin:changeme -X DELETE http://localhost:3000/devices/sales
 
 ## Selecting a device
 
-Every other device-scoped route (`/send/*`, `/message/*`, `/chat*`, `/group*`, `/user/*`, `/newsletter/*`, `/call/*` and `/app/*` except `/app/info`) needs to know which account to act as. GOWA resolves it in this order:
+Every other device-scoped route (`/send/*`, `/message/*`, `/chat*`, `/group*`, `/user/*`, `/newsletter/*`, `/call/*` and `/app/*` except `/app/info` and `/app/metrics`) needs to know which account to act as. GOWA resolves it in this order:
 
 1. The `X-Device-Id` header (URL-decoded).
 2. The `device_id` query parameter.
@@ -90,7 +91,7 @@ A slot that exists but is not logged in passes selection; the request then fails
 | Feature | How it is scoped |
 | --- | --- |
 | Webhooks | Every payload carries `device_id` (account JID) and `session_id` (slot ID). A slot can have its own webhook: `PATCH /devices/{device_id}/webhook`. See [Webhooks](/concepts/webhooks#per-device-webhooks). |
-| WebSocket | Connect to `/ws?device_id=<id>` to receive one slot's events. |
+| WebSocket | Connect to `/ws?device_id=<id>` to select the device context. The current hub broadcasts events to every connected socket, so clients must filter by the event's device identifiers. Browser origins must be trusted. |
 | Scheduled sends | Belong to the slot that created them; list them with that slot's `X-Device-Id`. |
 | MCP | `X-Device-Id` on the MCP connection, or a `device_id` argument per tool call. See [MCP server](/integrations/mcp). |
 | Chatwoot | `CHATWOOT_DEVICE_ID` for a single inbox, or per-device configs for one inbox per slot. See [Chatwoot](/integrations/chatwoot). |
@@ -100,4 +101,5 @@ A slot that exists but is not logged in passes selection; the request then fails
 - WhatsApp allows up to four linked companions per account. Each GOWA slot paired to that account uses one.
 - WhatsApp unlinks a companion if the phone stays offline for about 14 days.
 - History sync after pairing is partial and controlled by WhatsApp; GOWA stores what it receives in its chat storage.
+- User-facing chat and message reads use the logged-in account's storage identity. Do not substitute one slot's device header when looking up another slot's messages. A re-paired slot receives events through its current client.
 - Each slot is a full WhatsApp connection. Memory and CPU grow with the number of slots and the volume of traffic.

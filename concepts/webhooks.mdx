@@ -39,13 +39,16 @@ Each target URL is delivered independently, with its own secret and retries.
 ```bash
 # one or more URLs, comma-separated
 WHATSAPP_WEBHOOK=https://example.com/wa-hook,https://backup.example.com/wa-hook
-WHATSAPP_WEBHOOK_SECRET=change-me           # HMAC key, default "secret"
+WHATSAPP_WEBHOOK_SECRET=replace-with-a-private-key # stable HMAC key
 WHATSAPP_WEBHOOK_EVENTS=message,message.ack # optional allowlist; empty = all events
 WHATSAPP_WEBHOOK_IGNORE_JIDS=@g.us          # optional; skip chats or senders
-WHATSAPP_WEBHOOK_INSECURE_SKIP_VERIFY=false # true only for self-signed test endpoints
+WHATSAPP_WEBHOOK_INSECURE_SKIP_VERIFY=false # verify HTTPS certificates
+WHATSAPP_WEBHOOK_ALL_DEVICE_RECEIPTS=false  # optional linked-device receipts
 ```
 
-Equivalent flags: `--webhook`, `--webhook-secret`, `--webhook-events`, `--webhook-ignore-jids`, `--webhook-insecure-skip-verify`.
+Equivalent flags: `--webhook`, `--webhook-secret`, `--webhook-events`, `--webhook-ignore-jids`, `--webhook-insecure-skip-verify`, and `--webhook-all-device-receipts`.
+
+Set a private signing key explicitly. An unset key or the old published value `secret` causes GOWA to generate a random key that changes on restart and log a warning. Receivers need an explicit shared key to verify signatures across restarts. HTTPS certificates are verified by default.
 
 ## Events
 
@@ -58,14 +61,19 @@ Equivalent flags: `--webhook`, `--webhook-secret`, `--webhook-events`, `--webhoo
 | `message.ack` | Delivery or read receipt (`receipt_type`: `delivered`, `read`, ...). |
 | `message.deleted` | A message is deleted for you only. |
 | `chat_presence` | A contact starts or stops typing or recording. |
+| `presence` | A subscribed contact goes online or offline. Requires a presence subscription and an available client. |
 | `group.participants` | Members join, leave, are promoted or demoted (`type`: `join`, `leave`, `promote`, `demote`). |
+| `group.info` | A group name changes. Payload includes the new `name` and, when known, `name_set_by`. |
 | `group.joined` | Your account is added to a group. |
 | `label.edit` | A WhatsApp Business label is created or changed. |
 | `label.association` | A label is applied to or removed from a chat. |
 | `newsletter.joined` / `newsletter.left` | You follow or unfollow a channel. |
-| `newsletter.message` | New posts in a followed channel. |
+| `newsletter.message` | Live view, forward, and reaction counter updates for subscribed channel posts. |
 | `newsletter.mute` | A channel's mute setting changes. |
 | `call.offer` | Incoming call. With `WHATSAPP_AUTO_REJECT_CALL=true` it is rejected automatically. |
+| `device.logged_out` | WhatsApp logs out the device, including its reason code. |
+| `device.temporary_ban` | WhatsApp temporarily bans the account. |
+| `device.reachout_timelock` | WhatsApp activates or lifts a restriction on starting new chats. |
 
 Event names in the allowlist are case-insensitive.
 
@@ -95,23 +103,146 @@ Every request has the same envelope:
 | Field | Description |
 | --- | --- |
 | `event` | One of the event names above. |
-| `device_id` | JID of the account that received the event. |
-| `session_id` | The slot ID from `POST /devices`. Omitted if the JID cannot be mapped to a slot. Use it to route events per tenant. |
+| `device_id` | JID of the account that received the event. Device events omit it if the slot has no JID yet. |
+| `session_id` | Slot ID, such as the ID from `POST /devices`. Automatically created slots may use a WhatsApp JID. Device events always include it. Other events may omit it if the JID cannot be mapped to a slot. |
 | `payload` | Event-specific data. Common fields: `id`, `chat_id`, `from`, `from_lid`, `from_name`, `sender_display_name`, `timestamp` (RFC 3339), `is_from_me`. |
 
-Replies add `replied_to_id` and `quoted_body`. Receipts use `ids` (array) and `receipt_type`. Group events carry `chat_id`, `type` and `jids`.
+Replies add `replied_to_id` and `quoted_body`. Receipts use `ids` (array) and `receipt_type`. Group participant events carry `chat_id`, `type`, and `jids`. Group name changes use a separate `group.info` shape.
+
+`sender_display_name` appears only when `from` is a non-empty string. For another sender, GOWA prefers the saved contact name, live event push name, stored push name, business name, then the JID user part. For the active account, it prefers the account push name, then its JID identity. Resolution is best-effort. The legacy `from_name` remains the message event push name.
+
+Incoming messages may include `is_business: true`, `verified_name`, and `verified_level` when WhatsApp supplies a verified-name certificate. These fields are omitted otherwise. Absence does not establish whether a sender is a business, and `verified_level` is the raw upstream value rather than a guarantee of an official badge.
 
 ### Media
 
 With `WHATSAPP_AUTO_DOWNLOAD_MEDIA=true` (default), media is saved under `statics/media/` and the media field holds the path:
 
 ```json
-"image": "statics/media/1752404751-ad9e37ac-c658-4fe5-8d25-ba4a3f4d58fd.jpeg"
+{
+  "image": "statics/media/1752404751-ad9e37ac-c658-4fe5-8d25-ba4a3f4d58fd.jpeg"
+}
 ```
 
 When a caption is present, the field becomes `{"path": "...", "caption": "..."}` and the caption is also in `body`. With auto-download off, it is `{"url": "https://mmg.whatsapp.net/...", "caption": "..."}`; fetch the file later with `GET /message/{message_id}/download?phone=<chat>`.
 
 The full catalogue of payloads (polls, locations, contacts, view-once, ads referrals and more) is in the upstream [webhook payload reference](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/webhook-payload.md).
+
+## Albums and structured messages
+
+An album arrives as several `message` events. The header has no message body and carries the expected item counts:
+
+```json
+{
+  "id": "ALBUM_HEADER_ID",
+  "album": {
+    "expected_image_count": 3,
+    "expected_video_count": 1
+  }
+}
+```
+
+Each photo or video arrives in its own normal media event with `album_id: "ALBUM_HEADER_ID"`. Group items by that ID. The header is not a downloadable media item and is not forwarded to Chatwoot.
+
+Poll creation, votes, edits, and added options also use `message`. Inspect the structured `poll` object rather than relying on `body`. Option hashes are lowercase hexadecimal SHA-256 hashes of exact option names. Existing `WHATSAPP_WEBHOOK_EVENTS=message` subscriptions receive these interactions.
+
+## Online and offline presence
+
+Subscribe for each individual contact using the same device that receives the events:
+
+```bash
+curl -u admin:changeme -X POST http://localhost:3000/user/presence/subscribe \
+  -H "X-Device-Id: sales" \
+  -H "Content-Type: application/json" \
+  -d '{"phone":"628987654321"}'
+```
+
+A successful response contains `results.subscribed: true` and `results.jid`. Group and newsletter JIDs are rejected. A subscription does not override your device's presence setting. For continuous updates, start GOWA with:
+
+```bash
+WHATSAPP_PRESENCE_ON_CONNECT=available
+WHATSAPP_PRESENCE_PULSE_ENABLED=false
+WHATSAPP_WEBHOOK_EVENTS=message,presence
+```
+
+The default presence pulse ends by marking the device unavailable, which stops contact presence updates. Marking the device available suppresses WhatsApp push notifications on the phone while it runs. Account for this trade-off before enabling continuous tracking.
+
+```json
+{
+  "event": "presence",
+  "device_id": "628123456789@s.whatsapp.net",
+  "timestamp": "2026-10-29T12:05:00Z",
+  "payload": {
+    "from": "628987654321@s.whatsapp.net",
+    "state": "unavailable",
+    "last_seen": "2026-10-29T12:04:35Z"
+  }
+}
+```
+
+`state` is `available` or `unavailable`. `last_seen` is omitted when unknown or hidden by the contact's privacy settings. `from_lid` is included when applicable. Typing and recording remain separate `chat_presence` events and do not use this subscription.
+
+## Group name changes
+
+```json
+{
+  "event": "group.info",
+  "device_id": "628123456789@s.whatsapp.net",
+  "timestamp": "2026-10-29T10:35:00Z",
+  "payload": {
+    "chat_id": "120363402106000000@g.us",
+    "name": "Project team",
+    "name_set_by": "628987654321@s.whatsapp.net"
+  }
+}
+```
+
+`name_set_by` is resolved from LID to phone JID when possible and omitted when WhatsApp does not identify the actor. Subscribe to `group.info` explicitly if your event allowlist excludes other events.
+
+## Newsletter counter updates
+
+`newsletter.message` reports live counters rather than a guaranteed new-post body. Entries always include `server_id`. `message_id`, `type`, and `timestamp` are omitted when WhatsApp does not supply them. Zero or absent counters may be omitted.
+
+```json
+{
+  "event": "newsletter.message",
+  "device_id": "628123456789@s.whatsapp.net",
+  "timestamp": "2026-10-29T12:00:00Z",
+  "payload": {
+    "newsletter_id": "120363000000000000@newsletter",
+    "messages": [
+      {"server_id": 42, "views_count": 120, "forwards_count": 3}
+    ]
+  }
+}
+```
+
+When available, `reaction_counts` contains WhatsApp's reaction counts. Consume updates by newsletter ID and server ID. Do not treat a missing counter as a reset to zero.
+
+## Account restrictions and logout
+
+Device events always carry `session_id`, so slots using the same WhatsApp number remain distinguishable. The event uses the emitting slot's webhook configuration. A remote logout keeps the slot for re-pairing and reports the identity from before logout. Slot webhook settings survive re-pairing. These events are not sent to Chatwoot.
+
+```json
+{
+  "event": "device.logged_out",
+  "device_id": "628123456789@s.whatsapp.net",
+  "session_id": "sales",
+  "timestamp": "2026-10-29T09:00:00Z",
+  "payload": {
+    "code": 401,
+    "reason": "logged out from another device",
+    "on_connect": true
+  }
+}
+```
+
+| Event | Payload fields |
+| --- | --- |
+| `device.logged_out` | `code`, `reason`, `on_connect`. `on_connect` distinguishes a refused connection from an open connection being closed. |
+| `device.temporary_ban` | `code`, `reason`, `expires_in_seconds`. `expires_at` is a calculated RFC 3339 expiry and appears only when the duration is positive. The session is kept. |
+| `device.reachout_timelock` | `is_active`. Optional `enforcement_type` passes through WhatsApp's value. Optional `ends_at` is an RFC 3339 expiry. `is_active: false` means WhatsApp lifted the restriction. |
+
+Codes are forwarded unchanged and reason text comes from whatsmeow. Unknown codes still arrive. Logout codes `403` and `406` alone do not establish the exact cause. A temporary ban duration of zero means WhatsApp gave no expiry. A reach-out timelock restricts starting new chats and may produce send error 463.
 
 ## Verify signatures
 
@@ -127,7 +258,9 @@ const SECRET = process.env.WEBHOOK_SECRET;
 
 app.post("/wa-hook", express.raw({ type: "application/json" }), (req, res) => {
   const expected = crypto.createHmac("sha256", SECRET).update(req.body).digest("hex");
-  const received = (req.get("X-Hub-Signature-256") || "").replace("sha256=", "");
+  const signature = req.get("X-Hub-Signature-256") || "";
+  if (!/^sha256=[0-9a-f]{64}$/.test(signature)) return res.sendStatus(401);
+  const received = signature.slice(7);
   if (received.length !== expected.length ||
       !crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(received))) {
     return res.sendStatus(401);
@@ -178,11 +311,19 @@ func waHook(w http.ResponseWriter, r *http.Request) {
 ## Delivery and retries
 
 - Each attempt times out after **10 seconds**.
-- Any non-2xx response or network error is retried. GOWA makes up to **5 attempts**, waiting 1 s, 2 s, 4 s and 8 s between them.
+- Any non-2xx response or network error is retried. GOWA makes up to **5 attempts**, waiting 1 s, 2 s, 4 s, and 8 s between them. The event handler's context deadline can stop delivery before all attempts complete.
 - After the last failure the event is dropped and logged. There is no persistent queue or dead-letter store.
 - Several URLs are delivered independently.
 
-So: respond `2xx` quickly, process in the background, and make handlers idempotent; a retried event can arrive more than once.
+Respond `2xx` after accepting the event into your own durable processing queue. Make handlers idempotent because a retried event can arrive more than once.
+
+## Linked-device receipts
+
+By default, GOWA forwards contact acknowledgements from primary devices only to reduce duplicates. The current account's own `read` and `read-self` receipts pass from all its devices. For these own-account receipts, `payload.from` is the account JID and `payload.ids` identifies incoming messages that were read.
+
+Set `WHATSAPP_WEBHOOK_ALL_DEVICE_RECEIPTS=true` or `--webhook-all-device-receipts=true` to receive contact receipts from linked devices too, including when the contact's phone is offline. The CLI flag overrides the environment, including an explicit `false`.
+
+This opt-in can produce duplicate or out-of-order acknowledgements. Apply updates idempotently per account, chat, and message ID. Never downgrade a read message to delivered when an older receipt arrives. Message IDs and sender JIDs keep their canonical form without device suffixes.
 
 ## Filter events
 
@@ -213,6 +354,8 @@ curl -u admin:changeme -X PATCH http://localhost:3000/devices/sales/webhook \
 ```
 
 The same fields are accepted by `POST /devices`. Read the current setting with `GET /devices/{device_id}/webhook`. Send `"webhook_url": ""` to clear it.
+
+An empty device `webhook_secret` or `webhook_events` falls back to the corresponding global setting. The stored device `webhook_insecure_skip_verify` boolean replaces the global TLS setting. In particular, `false` keeps certificate verification enabled even when the global bypass is enabled.
 
 ```mermaid
 flowchart TD

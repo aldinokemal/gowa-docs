@@ -1,5 +1,6 @@
 ---
 title: "Authentication"
+keywords: ["basic auth", "browser origins", "WhatsApp pairing", "WebSocket"]
 description: "Protect the API with Basic Auth, then pair each WhatsApp account by QR code, pairing code or passkey."
 ---
 
@@ -21,7 +22,9 @@ APP_BASIC_AUTH=admin:changeme,ops:another-secret
 ./whatsapp rest --basic-auth=admin:changeme,ops:another-secret
 ```
 
-A malformed entry (for example one without `:`) stops the server at startup. When `APP_BASIC_AUTH` is empty, the API is **unauthenticated**; only do this on a trusted network.
+Every entry must contain a nonempty username and password. The default listener, `APP_HOST=0.0.0.0`, refuses to start without complete credentials. For local development without authentication, bind `APP_HOST=127.0.0.1`.
+
+If a reverse proxy authenticates every caller, `APP_ALLOW_UNAUTHENTICATED=true` or `--allow-unauthenticated=true` explicitly permits a non-loopback listener without Basic Auth. Restrict direct access to that listener.
 
 Send credentials on every request:
 
@@ -40,7 +43,7 @@ A missing or wrong credential returns `401 Unauthorized`.
 | `GET /health` | Liveness probe. Always at the root, ignoring `APP_BASE_PATH`. |
 | `POST /chatwoot/webhook`, `POST /chatwoot/webhook/{device_id}` | Called by Chatwoot. Registered only when `CHATWOOT_ENABLED=true` and protected by `CHATWOOT_WEBHOOK_SECRET` instead. See [Chatwoot](/integrations/chatwoot). |
 | MCP OAuth discovery and `/oauth/*` endpoints | Only when `MCP_OAUTH_ENABLED=true`. See [MCP server](/integrations/mcp). |
-| `GET /statics/*` | Static files: QR images, uploads and downloaded media. Served before Basic Auth, so anyone who knows a file name can fetch it. File names are random, but keep `statics/` off public networks or block it at your proxy if that matters. |
+| `GET /statics/*` | QR images, uploads, and downloaded media. Served before Basic Auth. Anyone who knows a file URL can retrieve it. Only validated JPEG, PNG, GIF, and WebP files in image paths display inline. Other files download as attachments with a non-active content type and `X-Content-Type-Options: nosniff`. Restrict file access at the proxy when required. |
 
 Everything else, including the dashboard at `/`, `/mcp` and `/ws`, requires Basic Auth when it is configured.
 
@@ -52,11 +55,22 @@ Browsers cannot set headers on WebSocket connections, so `/ws` takes the credent
 ws://localhost:3000/ws?device_id=my-device&authorization=YWRtaW46Y2hhbmdlbWU=
 ```
 
-`authorization` is `base64(user:password)`. Use TLS (`wss://`), since the credential is visible in the URL and in proxy logs.
+`authorization` is `base64(user:password)`. Use TLS (`wss://`) and redact the query string in proxy logs. The WebSocket checks the browser origin against the same trusted origins used for state-changing HTTP requests. The current WebSocket hub broadcasts events to all connected sockets. A `device_id` query selects the device context for the connection but does not isolate event delivery. Use the event's device identifiers to filter the dashboard view, and grant API access only to callers trusted with all devices.
 
 ### CORS
 
-CORS allows any origin by default. Restrict it for browser clients with `APP_CORS_ALLOWED_ORIGINS=https://ui.example.com` (comma-separated). Allowed request headers are `Origin`, `Content-Type`, `Accept`, `Authorization` and `X-Device-Id`.
+CORS allows any origin by default. Restrict it with `APP_CORS_ALLOWED_ORIGINS=https://ui.example.com` (comma-separated). Allowed request headers are `Origin`, `Content-Type`, `Accept`, `Authorization`, and `X-Device-Id`.
+
+CORS and browser origin checks are separate. A wildcard CORS origin does not authorize state-changing requests or WebSockets. GOWA trusts the request's own host, specific CORS origins, `APP_TRUSTED_ORIGINS`, and the origins configured for the OAuth issuer and Chatwoot callback URL. For a separate dashboard, configure its exact origin:
+
+```env
+APP_CORS_ALLOWED_ORIGINS=https://ui.example.com
+APP_TRUSTED_ORIGINS=https://ui.example.com
+```
+
+An untrusted browser mutation returns `403 CROSS_SITE_REQUEST_BLOCKED`. This also covers GET routes that log in, log out, reconnect, or reset an invite link. Clients such as curl that send no browser-origin headers continue to work.
+
+A `null` origin is never trusted. Serve `gowa-ui.html` over HTTP or HTTPS instead of opening it as a `file://` URL. Behind a reverse proxy, preserve `Host`, configure trusted proxies with `X-Forwarded-Host`, or list the public origin in `APP_TRUSTED_ORIGINS`.
 
 ## WhatsApp pairing
 
@@ -129,5 +143,5 @@ An account unlinked from the phone (Linked devices → Log out) is logged out th
 - Always set `APP_BASIC_AUTH` with strong passwords on anything reachable from a network.
 - Terminate TLS at a reverse proxy; Basic Auth credentials are only base64-encoded.
 - Restrict `APP_CORS_ALLOWED_ORIGINS` when a browser UI calls the API.
-- Change `WHATSAPP_WEBHOOK_SECRET` from its default `secret`.
-- Treat `storages/` as sensitive: it contains the WhatsApp session keys of every linked account.
+- Generate a stable `WHATSAPP_WEBHOOK_SECRET` with `openssl rand -hex 32`. Empty or published example secrets are replaced with a random per-process key that changes on restart.
+- Treat `storages/` as sensitive. It contains every linked account's session keys. New SQLite files use owner-only permissions, and directories created for them use `0700`. Protect backups with the same care.

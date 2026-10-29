@@ -1,5 +1,6 @@
 ---
 title: "API Authentication"
+keywords: ["API authentication", "Basic Auth", "CORS"]
 sidebarTitle: "Authentication"
 description: "GOWA authenticates API calls with HTTP Basic Auth only."
 ---
@@ -12,7 +13,7 @@ GOWA supports **HTTP Basic Auth** and nothing else: there are no API keys, beare
 APP_BASIC_AUTH=admin:changeme,ops:another-password   # or --basic-auth=admin:changeme
 ```
 
-Each comma-separated `user:pass` pair is a valid login. A malformed entry stops startup. If `APP_BASIC_AUTH` is empty, the API is open to anyone who can reach it.
+Each comma-separated `user:pass` pair is a valid login. Every entry must contain both a username and password. A non-loopback listener refuses to start without complete credentials. Bind `APP_HOST=127.0.0.1` for unauthenticated local development. Use `APP_ALLOW_UNAUTHENTICATED=true` only when a reverse proxy authenticates callers and direct access to GOWA is restricted.
 
 ## Send credentials
 
@@ -52,13 +53,15 @@ Wrong or missing credentials return `401 Unauthorized`.
 | Route | Why |
 | --- | --- |
 | `/health` | Liveness checks. |
-| `/statics/*` | QR images and media files. Protect at your proxy if needed. |
+| `/statics/*` | QR images and media files. Known URLs remain public. Non-image uploads download as attachments. Protect access at your proxy if needed. |
 | `/chatwoot/webhook`, `/chatwoot/webhook/{device_id}` | Called by Chatwoot; secured by `CHATWOOT_WEBHOOK_SECRET`. |
 | MCP OAuth endpoints and `/.well-known/*` metadata | OAuth flow, when enabled. |
 
 ## WebSocket
 
-Browsers cannot set headers on WebSocket connections, so `/ws` also accepts the credentials as a query parameter: `/ws?device_id=my-device&authorization=<base64 user:pass>`.
+Browsers cannot set headers on WebSocket connections, so `/ws` also accepts `/ws?device_id=my-device&authorization=<base64 user:pass>`. Use `wss://` and redact credentials from proxy logs.
+
+The WebSocket and state-changing HTTP routes reject untrusted browser origins. Set the dashboard's exact origin in `APP_TRUSTED_ORIGINS` or `APP_CORS_ALLOWED_ORIGINS`. A wildcard CORS origin does not grant this access, and `null` origins from `file://` pages are rejected. HTTP mutations from an untrusted origin return `403 CROSS_SITE_REQUEST_BLOCKED`. See [browser access configuration](/authentication#cors).
 
 ## Device header
 

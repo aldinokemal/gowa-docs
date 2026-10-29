@@ -1,5 +1,6 @@
 ---
 title: "Configuration Reference"
+keywords: ["environment variables", "CLI flags", "PostgreSQL TLS", "security"]
 description: "Every GOWA environment variable and command-line flag, with defaults."
 sidebarTitle: "Configuration"
 icon: "sliders"
@@ -14,7 +15,7 @@ GOWA reads configuration from three places:
 The `.env` file only fills in variables that are not already set in the environment.
 
 <Warning>
-In the current code, environment variables (including `.env`) are applied **after** flags are parsed, so a variable that is set overrides the matching flag. The MCP OAuth settings are the exception: their flags win. The upstream README states that flags always take priority; until that is reconciled, set each option in one place only.
+In the current code, environment variables (including `.env`) are applied **after** flags are parsed, so a variable that is set overrides the matching flag. MCP OAuth settings, `--allow-unauthenticated`, `--trusted-origins`, `--chatwoot-webhook-allow-unsigned`, and `--webhook-all-device-receipts` are exceptions whose explicit flags win. Set each option in one place only. For example, `WHATSAPP_WEBHOOK_INSECURE_SKIP_VERIFY=true` overrides `--webhook-insecure-skip-verify=false`.
 </Warning>
 
 Booleans accept `true`/`false`. Durations use Go syntax (`30s`, `5m`, `3h`). List values are comma-separated.
@@ -35,10 +36,12 @@ Booleans accept `true`/`false`. Durations use Go syntax (`30s`, `5m`, `3h`). Lis
 | `APP_HOST` | `--host`, `-H` | `0.0.0.0` | Bind address. |
 | `APP_DEBUG` | `--debug`, `-d` | `false` | Verbose logging. |
 | `APP_OS` | `--os` | `GOWA` | Device name shown in WhatsApp's **Linked devices** list. |
-| `APP_BASIC_AUTH` | `--basic-auth`, `-b` | — | `user:pass` pairs, comma-separated. Empty disables auth. |
+| `APP_BASIC_AUTH` | `--basic-auth`, `-b` | — | Complete `user:pass` pairs, comma-separated. Required for a non-loopback listener unless the explicit unauthenticated override is set. |
+| `APP_ALLOW_UNAUTHENTICATED` | `--allow-unauthenticated` | `false` | Permit a non-loopback listener without Basic Auth. Use only behind an authenticating proxy with restricted direct access. |
+| `APP_TRUSTED_ORIGINS` | `--trusted-origins` | — | Exact extra browser origins allowed to mutate state and open WebSockets. The request host and specific CORS origins are also trusted. |
 | `APP_BASE_PATH` | `--base-path` | — | Serve under a sub-path, e.g. `/gowa`. `/health` stays at the root. |
 | `APP_TRUSTED_PROXIES` | `--trusted-proxies` | — | Proxy IP ranges whose forwarded headers are trusted, e.g. `10.0.0.0/8`. |
-| `APP_CORS_ALLOWED_ORIGINS` | `--cors-allowed-origins` | — (any origin) | Origins allowed for browser access. |
+| `APP_CORS_ALLOWED_ORIGINS` | `--cors-allowed-origins` | — (any origin) | CORS origins. Specific origins also pass browser origin checks. A wildcard does not authorize mutations or WebSockets. |
 
 ## Dashboard
 
@@ -74,6 +77,10 @@ See [MCP server](/integrations/mcp).
 
 Chat storage (chats, messages, schedules) always lives in `storages/chatstorage.db` and is not configurable.
 
+SQLite databases for sessions, chat storage, and OAuth are created with `0600` permissions. Directories GOWA creates for these files use `0700`. Existing directories keep their permissions. Permission changes that are not supported by the filesystem are logged as warnings.
+
+For PostgreSQL session and key stores, an omitted or blank `sslmode` defaults to `verify-full` for remote dial targets. `localhost`, loopback IPs, and Unix sockets default to `disable`. Explicit URI settings, `PGSSLMODE`, and service configuration remain effective. A `PGSERVICE` entry can override the URI host and TLS mode. For managed PostgreSQL, supply `sslmode=verify-full` and the required CA configuration explicitly.
+
 ## WhatsApp behavior
 
 | Variable | Flag | Default | Description |
@@ -95,11 +102,12 @@ Chat storage (chats, messages, schedules) always lives in `storages/chatstorage.
 | Variable | Flag | Default | Description |
 |---|---|---|---|
 | `WHATSAPP_WEBHOOK` | `--webhook`, `-w` | — | Webhook URL(s), comma-separated. |
-| `WHATSAPP_WEBHOOK_SECRET` | `--webhook-secret` | `secret` | HMAC key for `X-Hub-Signature-256`. Change it. |
+| `WHATSAPP_WEBHOOK_SECRET` | `--webhook-secret` | random per process | HMAC key for `X-Hub-Signature-256`. Set a stable generated key. Empty, `secret`, `super-secret-key`, and `your-private-key` produce an ephemeral key instead. |
 | `WHATSAPP_WEBHOOK_INSECURE_SKIP_VERIFY` | `--webhook-insecure-skip-verify` | `false` | Skip TLS verification (development only). |
 | `WHATSAPP_WEBHOOK_EVENTS` | `--webhook-events` | — (all) | Event allowlist, e.g. `message,message.ack`. |
 | `WHATSAPP_WEBHOOK_IGNORE_JIDS` | `--webhook-ignore-jids` | — | JIDs or wildcards (`@g.us`, `@s.whatsapp.net`, `@lid`) not forwarded. |
 | `WHATSAPP_WEBHOOK_DEVICE_MERGE_GLOBAL` | `--webhook-device-merge-global` | `false` | Send a device's events to the global URLs as well as its own webhook. |
+| `WHATSAPP_WEBHOOK_ALL_DEVICE_RECEIPTS` | `--webhook-all-device-receipts` | `false` | Forward receipts from contacts' linked devices as well as their primary device. May produce multiple acknowledgments for one message. |
 
 See [Webhooks](/concepts/webhooks).
 
@@ -123,6 +131,7 @@ See [Webhooks](/concepts/webhooks).
 | `CHATWOOT_INBOX_NAME` | `--chatwoot-inbox-name` | `WhatsApp` |
 | `CHATWOOT_WEBHOOK_URL` | `--chatwoot-webhook-url` | — |
 | `CHATWOOT_WEBHOOK_SECRET` | `--chatwoot-webhook-secret` | — |
+| `CHATWOOT_WEBHOOK_ALLOW_UNSIGNED` | `--chatwoot-webhook-allow-unsigned` | `false` |
 | `CHATWOOT_WEBHOOK_SIGNATURE_TOLERANCE` | `--chatwoot-webhook-signature-tolerance` | `5m` |
 | `CHATWOOT_REOPEN_CONVERSATION` | `--chatwoot-reopen-conversation` | `true` |
 | `CHATWOOT_CONVERSATION_PENDING` | `--chatwoot-conversation-pending` | `false` |
@@ -149,6 +158,12 @@ These are compiled in and cannot be changed by configuration:
 | Request timeout | 45 s (`504 GATEWAY_TIMEOUT`) |
 | Webhook delivery | 10 s per attempt, 5 attempts |
 
+## Media URL downloads
+
+Send requests that fetch media, documents, or link previews accept HTTP and HTTPS URLs. Public URL fetches reject loopback, private, link-local, metadata, multicast, and reserved destinations. Redirects and the address actually dialed are checked. These downloads connect directly and do not use `HTTP_PROXY` or `HTTPS_PROXY`.
+
+GOWA can read its own `/statics` URLs from disk. Chatwoot attachment downloads can use the configured Chatwoot destination or allowed hosts, including an internal host when trusted through that integration. This exception does not apply to arbitrary URLs submitted to the send API. Use file uploads when the source is private.
+
 ## Not used
 
 `src/.env.example` lists `WHATSAPP_WEBHOOK_INCLUDE_OUTGOING` and `WHATSAPP_CHAT_STORAGE`, but the current code does not read either. Setting them has no effect.
@@ -160,7 +175,7 @@ APP_PORT=3000
 APP_OS=MyCompany
 APP_BASIC_AUTH=admin:a-long-random-password
 APP_TRUSTED_PROXIES=10.0.0.0/8
-DB_URI=postgres://gowa:secret@db:5432/gowa?sslmode=disable
+DB_URI=postgres://gowa:replace-with-password@db.example.com:5432/gowa?sslmode=verify-full
 WHATSAPP_WEBHOOK=https://example.com/wa-hook
 WHATSAPP_WEBHOOK_SECRET=another-long-random-secret
 WHATSAPP_WEBHOOK_EVENTS=message,message.ack

@@ -1,5 +1,5 @@
 ---
-title: "Receiving Messages"
+title: "Receiving messages"
 description: "Handle incoming messages with webhooks, or read stored chats and messages from GOWA's chat storage."
 ---
 
@@ -33,6 +33,7 @@ A text message arrives as:
     "chat_id": "628987654321@s.whatsapp.net",
     "from": "628987654321@s.whatsapp.net",
     "from_name": "John Doe",
+    "sender_display_name": "John Doe",
     "timestamp": "2026-10-15T10:30:00Z",
     "is_from_me": false,
     "body": "Hello, how are you?"
@@ -57,14 +58,20 @@ const SECRET = "change-me";
 const app = express();
 app.post("/wa-hook", express.raw({ type: "application/json" }), async (req, res) => {
   const sig = crypto.createHmac("sha256", SECRET).update(req.body).digest("hex");
-  if (req.get("X-Hub-Signature-256") !== `sha256=${sig}`) return res.sendStatus(401);
-  res.sendStatus(200);
-
+  const received = req.get("X-Hub-Signature-256") || "";
+  const expected = `sha256=${sig}`;
+  if (!/^sha256=[0-9a-f]{64}$/.test(received) ||
+      received.length !== expected.length ||
+      !crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected))) {
+    return res.sendStatus(401);
+  }
   const evt = JSON.parse(req.body);
+  res.sendStatus(200);
   if (evt.event !== "message" || evt.payload.is_from_me) return;
+  if (!evt.session_id) return;
   if (!/^hi\b/i.test(evt.payload.body || "")) return;
 
-  await fetch(`${GOWA}/send/message`, {
+  const response = await fetch(`${GOWA}/send/message`, {
     method: "POST",
     headers: {
       Authorization: AUTH,
@@ -77,13 +84,24 @@ app.post("/wa-hook", express.raw({ type: "application/json" }), async (req, res)
       reply_message_id: evt.payload.id,
     }),
   });
+  if (!response.ok) console.error("GOWA reply failed", response.status);
 });
 app.listen(8080);
 ```
 
+This minimal example acknowledges before sending the reply. For production, enqueue the verified event durably before acknowledging it, deduplicate by device, chat, and message ID, and retry failed sends in your worker. Skip events without `session_id` or resolve the correct device explicitly.
+
 For a fixed reply to every message, `WHATSAPP_AUTO_REPLY="We'll get back to you soon"` does this without any code.
 
 See [Webhooks](/concepts/webhooks) for every event type, media fields, retries and per-device URLs.
+
+### Handle new event shapes
+
+An album header is a `message` event with `payload.album` and no text body. Each image or video follows as a separate media event with `payload.album_id`. Group media by that ID instead of treating the header as a missing message.
+
+`newsletter.message` contains channel counter updates and does not guarantee a new-post body. Online and offline contact updates use `presence`, require `POST /user/presence/subscribe`, and require your client to remain available. Group name changes use `group.info`.
+
+Subscribe to `device.logged_out`, `device.temporary_ban`, and `device.reachout_timelock` to distinguish account restrictions from ordinary disconnections. These events always identify the slot with `session_id`. See [Webhooks](/concepts/webhooks) for the fields and presence configuration.
 
 ## Chat storage API
 

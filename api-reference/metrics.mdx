@@ -1,0 +1,67 @@
+---
+title: "Server metrics"
+description: "Inspect GOWA process memory, container limits, disk usage, uptime, and device counts."
+keywords: ["metrics", "monitoring", "memory", "disk", "health"]
+---
+
+`GET /app/metrics` returns a JSON snapshot for monitoring the GOWA server. The route uses the server's configured authentication and does not require `X-Device-Id` or a registered device.
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" "$GOWA_URL/app/metrics"
+```
+
+The response uses the normal `code`, `message`, and `results` envelope.
+
+Set the server URL and credentials before running the curl examples. Use the public HTTPS URL for a remote server and include `APP_BASE_PATH` when configured.
+
+```bash
+export GOWA_URL=http://localhost:3000
+export GOWA_USER=admin
+export GOWA_PASSWORD=replace-with-your-password
+export DEVICE_ID=my-device
+```
+
+## Top-level results
+
+| Field | Meaning |
+| --- | --- |
+| `version` | GOWA's source version. |
+| `session_store` | `sqlite` or `postgres`, selected from the configured session database URI. |
+| `devices.total` | Registered devices. |
+| `devices.logged_in` | Devices with a logged-in WhatsApp session. |
+| `devices.connected` | Devices currently connected to WhatsApp. |
+| `system` | Process, memory, folder, and filesystem snapshot. |
+
+Logged-in and connected counts measure different states. A stored session can remain logged in while its device is disconnected.
+
+## System fields
+
+| Field under `results.system` | Meaning |
+| --- | --- |
+| `started_at` | RFC 3339 time recorded during process initialization. |
+| `uptime_seconds` | Elapsed seconds since that time, including initialization. |
+| `go_version` | Go runtime version. |
+| `cpu_seconds` | Cumulative process CPU time in seconds, including user and system time. This is not CPU utilization. |
+| `memory.heap_alloc_bytes` | Allocated Go heap bytes. |
+| `memory.runtime_sys_bytes` | Bytes obtained by the Go runtime from the operating system. |
+| `memory.process_rss_bytes` | Process resident memory from Linux `/proc`. |
+| `memory.container_bytes` | Memory used by the container's cgroup. |
+| `memory.container_limit_bytes` | Container memory limit. `null` can mean unlimited or unavailable. |
+| `memory.goroutines` | Current number of goroutines. |
+| `memory.gc_cycles` | Completed garbage collection cycles. |
+| `folders.media.bytes` and `.files` | Size and entry count for the configured media tree. |
+| `folders.storages.bytes` and `.files` | Size and entry count for the configured storage tree. |
+| `filesystem.total_bytes` | Total capacity of the filesystem containing the storage directory. |
+| `filesystem.free_bytes` | Available space on that filesystem. |
+
+<Note>
+Treat nullable metrics as unknown rather than zero. CPU time and process resident memory depend on Linux `/proc`. Container memory uses the standard `/sys/fs/cgroup` mount, trying cgroup v2 before v1. These fields can be `null` on other platforms or when the relevant files are unavailable.
+</Note>
+
+Folder measurements are cached for one minute. They are best effort and omit unreadable entries. Directory symlink targets are not traversed. Folder bytes do not include a remote PostgreSQL database, and they are not a replacement for the filesystem free-space measurement.
+
+## Poll the snapshot
+
+Poll at an interval appropriate for your monitoring system. Compare cumulative `cpu_seconds` values across snapshots to calculate CPU use over an interval. Account for process restarts by checking `started_at` before calculating deltas.
+
+Use `/app/info` for enabled features, base path, and media limits. Use `/app/metrics` for resource usage. Both endpoints work before a device exists.
