@@ -1,0 +1,128 @@
+---
+title: "Experimental interactive messages"
+description: "Send reply buttons, calls to action, selection lists, location requests, and image carousels."
+keywords: ["interactive", "buttons", "carousel", "location request"]
+---
+
+`POST /send/interactive` sends WhatsApp native-flow messages through the selected device. Use Basic Auth, `X-Device-Id`, and a JSON body. This endpoint supports immediate REST sends. Scheduled sends and MCP do not expose it.
+
+<Warning>
+This experimental endpoint uses an unofficial WhatsApp protocol. Recipient rendering varies by client and can change without notice. Test on your target clients before use. A successful API response confirms send acceptance, not delivery or rendering.
+</Warning>
+
+Set the server URL and credentials before running the curl examples. Use the public HTTPS URL for a remote server and include `APP_BASE_PATH` when configured.
+
+```bash
+export GOWA_URL=http://localhost:3000
+export GOWA_USER=admin
+export GOWA_PASSWORD=replace-with-your-password
+export DEVICE_ID=my-device
+```
+
+## Send buttons
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" \
+  -H 'Content-Type: application/json' -H "X-Device-Id: $DEVICE_ID" \
+  "$GOWA_URL/send/interactive" --data '{
+    "phone": "628123456789",
+    "body": "Confirm your order?",
+    "footer": "Order 123",
+    "buttons": [
+      {"name": "quick_reply", "params": {"display_text": "Confirm", "id": "confirm"}},
+      {"name": "quick_reply", "params": {"display_text": "Cancel", "id": "cancel"}}
+    ]
+  }'
+```
+
+`phone` accepts a phone number or a full user or group JID. Group sends require membership and posting permission. Newsletter and broadcast recipients are not supported.
+
+Provide either top-level `buttons` or `cards`. Supplying both, or neither, fails validation.
+
+| Button name | Required parameters |
+| --- | --- |
+| `quick_reply` | Nonempty `display_text` and `id` strings. |
+| `cta_url` | Nonempty `display_text` and an absolute HTTP or HTTPS `url`. |
+| `cta_copy` | Nonempty `display_text` and `copy_code` strings. |
+| `cta_call` | Nonempty `display_text` and `phone_number` strings. |
+| `single_select` | Nonempty `title` and `sections`. Each section needs nonempty `rows`; each row needs nonempty string `id` and `title`. |
+| `send_location` | A JSON object such as `{}`. Must be the only button in a message without cards. |
+
+For a selection list, use these parameters:
+
+```json
+{
+  "name": "single_select",
+  "params": {
+    "title": "Choose a size",
+    "sections": [{
+      "title": "Sizes",
+      "rows": [
+        {"id": "small", "title": "Small"},
+        {"id": "large", "title": "Large"}
+      ]
+    }]
+  }
+}
+```
+
+## Request a location
+
+```json
+{
+  "phone": "628123456789",
+  "body": "Share your delivery location",
+  "buttons": [{"name": "send_location", "params": {}}]
+}
+```
+
+Send this JSON to `/send/interactive`. The recipient must choose to share a location. The endpoint does not retrieve a location without their action.
+
+## Send an image carousel
+
+```json
+{
+  "phone": "628123456789",
+  "body": "Choose a product",
+  "cards": [
+    {
+      "title": "Product A",
+      "body": "Available in blue",
+      "image_base64": "<raw JPEG or PNG base64>",
+      "buttons": [{"name": "quick_reply", "params": {"display_text": "Choose A", "id": "choose_a"}}]
+    },
+    {
+      "title": "Product B",
+      "body": "Available in green",
+      "image_base64": "<raw JPEG or PNG base64>",
+      "buttons": [{"name": "quick_reply", "params": {"display_text": "Choose B", "id": "choose_b"}}]
+    }
+  ]
+}
+```
+
+Replace the image placeholders with raw standard base64, without a data URL prefix. Images are optional on individual cards. GOWA resizes supplied images to fit 1280 pixels, converts them to JPEG, creates thumbnails, and uploads them to WhatsApp. Remote image URLs are not accepted.
+
+## Request limits
+
+| Field | Limit |
+| --- | --- |
+| Message `body` | Required and nonblank, maximum 4096 bytes. |
+| Message `footer` | Maximum 256 bytes. |
+| `buttons` | 1–10 per message or card. |
+| Button `params` | JSON object, maximum 16,384 bytes. |
+| `cards` | 2–10 cards. |
+| Card `body` | Required and nonblank, maximum 4096 bytes. |
+| Card `title` and `footer` | Maximum 256 bytes each. |
+| Card `image_base64` | Maximum 2,800,000 encoded characters and 2,000,000 decoded bytes, also subject to the server's configured image size limit. |
+| Decoded image | JPEG or PNG, maximum 4096 pixels per side. |
+
+The server's overall HTTP request body limit also applies. Use small images when sending several cards. Invalid choices or sizes return a validation error before sending.
+
+## Handle replies and receipts
+
+Successful sends return the normal success envelope with `results.message_id` and a status that says recipient rendering is unverified. Use [incoming webhooks](/concepts/webhooks) for replies and `message.ack` events for receipts. Retrying after an ambiguous timeout can duplicate messages.
+
+Downstream Android tests reported working reply, URL, copy, call, selection, location, and carousel actions. Those reports do not establish compatibility across accounts, iOS, or WhatsApp Web. Individual carousel cards can show pending icons even when the parent message has checkmarks and the recipient can reply. That issue remains unresolved.
+
+The endpoint does not register official templates or support inline Flows, catalogs, or native payments.

@@ -1,5 +1,6 @@
 ---
 title: "Chatwoot Integration"
+keywords: ["Chatwoot", "signed webhooks", "quoted replies", "routing"]
 description: "Mirror WhatsApp conversations into a Chatwoot inbox and let agents reply from Chatwoot."
 sidebarTitle: "Chatwoot"
 icon: "headset"
@@ -62,7 +63,8 @@ flowchart LR
 | `CHATWOOT_INBOX_ID` | — | Numeric inbox ID. Optional with `CHATWOOT_AUTO_CREATE=true`; when set it always wins. |
 | `CHATWOOT_DEVICE_ID` | — | Device (slot ID or JID) that sends agent replies. Required when more than one device exists. |
 | `CHATWOOT_WEBHOOK_URL` | — | Public GOWA webhook URL; used when auto-creating the inbox. |
-| `CHATWOOT_WEBHOOK_SECRET` | — | Verifies incoming Chatwoot webhooks. Empty accepts unauthenticated webhooks. |
+| `CHATWOOT_WEBHOOK_SECRET` | — | Verifies incoming Chatwoot webhooks. An empty effective secret rejects calls unless the explicit unsigned override is enabled. |
+| `CHATWOOT_WEBHOOK_ALLOW_UNSIGNED` | `false` | Accept requests with no effective secret. Restrict this to a trusted network. |
 | `CHATWOOT_WEBHOOK_SIGNATURE_TOLERANCE` | `5m` | Maximum age / clock skew of `X-Chatwoot-Timestamp`. |
 | `CHATWOOT_AUTO_CREATE` | `false` | Reuse or create an API inbox named `CHATWOOT_INBOX_NAME` at startup. |
 | `CHATWOOT_INBOX_NAME` | `WhatsApp` | Inbox name for auto-provisioning. |
@@ -86,14 +88,18 @@ Most settings also have a `--chatwoot-*` flag; `CHATWOOT_URL`, `CHATWOOT_API_TOK
 
 ## Webhook secret
 
-When `CHATWOOT_WEBHOOK_SECRET` (or a device's `webhook_secret`) is set, every webhook must prove it by one of:
+An empty effective webhook secret rejects the delivery. `CHATWOOT_WEBHOOK_ALLOW_UNSIGNED=true` explicitly permits unsigned delivery when the effective secret is empty. With a secret configured, every request must prove it by one of:
 
-1. **Chatwoot's signature** (`X-Chatwoot-Signature` + `X-Chatwoot-Timestamp`), recommended. Use the API channel's own webhook secret. Replays are rejected.
+1. **Chatwoot's signature** (`X-Chatwoot-Signature` + `X-Chatwoot-Timestamp`), recommended. Use the API channel's own webhook secret. GOWA checks the HMAC-SHA256 of `<timestamp>.<raw body>` and rejects timestamps outside the configured tolerance.
 2. An `X-Hub-Signature-256` HMAC of the body.
 3. The secret in an `X-Chatwoot-Webhook-Secret` or `X-Gowa-Chatwoot-Secret` header.
 4. `?secret=` in the webhook URL, only for Chatwoot versions that cannot sign or add headers. The secret then appears in access logs.
 
-Failures return `401`; GOWA logs the reason (`signature does not match` = wrong secret, `timestamp outside the tolerance window` = clock drift).
+Failures return `401`; GOWA logs the reason (`signature does not match` means the wrong secret, `timestamp outside the tolerance window` means clock drift).
+
+The device's `webhook_secret` replaces the global secret for that device on both the shared and per-device endpoints. Without a device secret, the global secret applies. GOWA verifies the secret for the routed device before sending, deleting, marking read, or writing data. Prefer the per-device callback URL when several devices use the same account and inbox IDs.
+
+A repeated Chatwoot-signed request that already received `2xx` is acknowledged with `200` and skipped inside the timestamp window. Failed requests remain retryable. An identical request still in progress can return `503` after waiting up to 30 seconds. Replay memory is local to the process, is lost on restart, and is bounded to 65,536 accepted requests. It is not shared between GOWA instances. Two separately signed deliveries of the same Chatwoot message can still send twice. Body-only HMACs, secret headers, and query secrets do not provide this delivery deduplication.
 
 ## Auto-provisioning
 
@@ -123,10 +129,20 @@ Once **any** per-device config exists, the `CHATWOOT_*` destination is no longer
 </Warning>
 
 - `api_token` is stored in GOWA's database and masked in reads; `webhook_secret` is never returned.
-- `chatwoot_url` must be `http(s)`, without credentials, and must not resolve to private or loopback addresses. Restrict it further with `CHATWOOT_ALLOWED_HOSTS`.
+- `chatwoot_url` must be HTTP or HTTPS without credentials. Without `CHATWOOT_ALLOWED_HOSTS`, private, loopback, link-local, and metadata addresses are rejected. An explicit matching host in `CHATWOOT_ALLOWED_HOSTS` is trusted and can target self-hosted Chatwoot on a private network. Set this allowlist only to hosts you control.
 - Changing `chatwoot_url`, `account_id` or `inbox_id` after conversations are linked returns `409`; delete and recreate the config instead.
 - A config can be created before the device pairs.
 - Direct database import works only in single (environment) config mode.
+
+## Replies and formatting
+
+When an agent uses **Reply** in Chatwoot, GOWA quotes the original WhatsApp message when it can resolve it in the sending device's local store and the same chat. This applies to text and every attachment, including the audio-to-file fallback. The caption stays on the first attachment only.
+
+For an inbound WhatsApp message, GOWA resolves `in_reply_to_external_id` with the `WAID:<id>` prefix. For an earlier agent reply, the numeric `in_reply_to` resolves through a durable message link in the same device, conversation, account, inbox, and config. A message with multiple attachments quotes its first file. If the target cannot be resolved, the reply is delivered without a quote.
+
+Incoming WhatsApp replies and reactions thread onto the referenced message in Chatwoot. Agent reply Markdown links and emphasis are converted to readable WhatsApp text. Lists, line breaks, and code are preserved. Empty signature separators are removed. `CHATWOOT_SIGN_MSG` prefixes the agent's name after this conversion.
+
+Only eligible public outgoing agent messages are sent. Private notes and excluded chats are not forwarded. GOWA uses the configured device and account/inbox identity to route shared callbacks. Per-device callbacks provide an unambiguous route.
 
 ## Import history
 

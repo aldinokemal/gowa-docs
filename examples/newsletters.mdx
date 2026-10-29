@@ -1,0 +1,129 @@
+---
+title: "WhatsApp channels"
+description: "Find, follow, and read newsletters, download channel media, and receive live engagement updates."
+keywords: ["newsletter", "channels", "live updates", "directory"]
+---
+
+GOWA calls WhatsApp channels **newsletters** in its API. All requests on this page use Basic Auth and a logged-in device selected by `X-Device-Id`. A channel ID ends in `@newsletter`; a contact number or group JID is not a channel ID.
+
+Set the server URL and credentials before running the curl examples. Use the public HTTPS URL for a remote server and include `APP_BASE_PATH` when configured.
+
+```bash
+export GOWA_URL=http://localhost:3000
+export GOWA_USER=admin
+export GOWA_PASSWORD=replace-with-your-password
+export DEVICE_ID=my-device
+```
+
+## Find a channel
+
+Look up channel metadata by either `newsletter_id` or `invite`. Supply exactly one. An invite can be a full `https://whatsapp.com/channel/...` link or its code.
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" --get \
+  -H "X-Device-Id: $DEVICE_ID" \
+  --data-urlencode 'invite=https://whatsapp.com/channel/0029Va4K0PZ5a245NkngBA2M' \
+  "$GOWA_URL/newsletter/info"
+```
+
+`results` contains the channel metadata, including its ID, thread metadata, and viewer metadata. Invite lookup supports public metadata without following the channel. JID lookup depends on the selected account's access to the channel. `viewer_metadata` can be `null` when WhatsApp supplies only public metadata.
+
+To browse the directory, provide at least one country code. To search by name, use `search_text`.
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" --get \
+  -H "X-Device-Id: $DEVICE_ID" \
+  --data-urlencode 'country_codes=ID' --data-urlencode 'view=TRENDING' \
+  --data-urlencode 'limit=20' "$GOWA_URL/newsletter/directory"
+
+curl --user "$GOWA_USER:$GOWA_PASSWORD" --get \
+  -H "X-Device-Id: $DEVICE_ID" \
+  --data-urlencode 'search_text=news' "$GOWA_URL/newsletter/directory"
+```
+
+| Query | Behavior |
+| --- | --- |
+| `view` | `RECOMMENDED` by default. Also accepts `TRENDING`, `POPULAR`, `NEW`, and `FEATURED`. Name searches ignore this selection. |
+| `country_codes` | ISO two-letter codes, repeated or comma-separated. Required for browsing. Name searches do not support country filtering. |
+| `categories` | Repeated or comma-separated values from `BUSINESS`, `ENTERTAINMENT`, `LIFESTYLE`, `NEWS`, `ORGANIZATIONS`, `PEOPLE`, and `SPORTS`. |
+| `limit` | Default `20`, range `1`–`50`. |
+| `cursor` | Use the preceding response's `results.next_cursor` while `results.has_more` is `true`. |
+
+Directory responses put channels in `results.data`. The directory uses undocumented WhatsApp queries and can change independently of GOWA.
+
+## Follow or unfollow
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" \
+  -H "X-Device-Id: $DEVICE_ID" -H 'Content-Type: application/json' \
+  "$GOWA_URL/newsletter/follow" \
+  --data '{"newsletter_id":"120363024512399999@newsletter"}'
+```
+
+Use the same JSON body with `POST /newsletter/unfollow` to unfollow. `GET /user/my/newsletters` lists newsletters followed by the selected account.
+
+Following a channel and subscribing to live engagement updates are separate operations. Manage live subscriptions through `/newsletter/live-updates`.
+
+## Read messages and counters
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" --get \
+  -H "X-Device-Id: $DEVICE_ID" \
+  --data-urlencode 'newsletter_id=120363024512399999@newsletter' \
+  --data-urlencode 'count=50' "$GOWA_URL/newsletter/messages"
+```
+
+`GET /newsletter/messages` reads posts directly from WhatsApp without requiring a follow. Available history is controlled by WhatsApp. GOWA does not guarantee a retention window or complete archive. `count` defaults to `50` and accepts `1`–`100`. To load older posts, pass the oldest returned `server_id` as `before`.
+
+`results.data` contains posts with `server_id`, `message_id`, `type`, `timestamp`, `text`, `views_count`, `forwards_count`, and optional `reaction_counts`. Content fields can be absent. WhatsApp reports views to channel admins; other accounts can see `views_count: 0`.
+
+Use the numeric `server_id`, rather than `message_id`, for pagination and media downloads.
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" --get \
+  -H "X-Device-Id: $DEVICE_ID" \
+  --data-urlencode 'newsletter_id=120363024512399999@newsletter' \
+  --data-urlencode 'after=123' --data-urlencode 'count=50' \
+  "$GOWA_URL/newsletter/message-updates"
+```
+
+`GET /newsletter/message-updates` refreshes counters without fetching message content. `after` is required and must be a positive server ID. `count` defaults to `50`, with a maximum of `100`. Optional `since` is a nonnegative Unix timestamp in seconds. Results use the same `results.data` list shape, with content fields omitted when WhatsApp does not return them.
+
+## Receive live counter updates
+
+Configure a [webhook](/concepts/webhooks), then subscribe each device to the channels it needs.
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" \
+  -H "X-Device-Id: $DEVICE_ID" -H 'Content-Type: application/json' \
+  "$GOWA_URL/newsletter/live-updates" \
+  --data '{"newsletter_id":"120363024512399999@newsletter"}'
+```
+
+The response's `results` contains `newsletter_id`, `duration_seconds`, `expires_at`, `renewed_at`, and optional `last_error`. WhatsApp grants a short subscription, observed at about 90 seconds. GOWA renews it before expiration and after reconnects. Counter events arrive as `newsletter.message` webhooks.
+
+List subscriptions with `GET /newsletter/live-updates`. Its `results.data` includes the same status fields. Inspect `last_error` when renewal fails.
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" -X DELETE --get \
+  -H "X-Device-Id: $DEVICE_ID" \
+  --data-urlencode 'newsletter_id=120363024512399999@newsletter' \
+  "$GOWA_URL/newsletter/live-updates"
+```
+
+Deleting a subscription stops renewal. WhatsApp can continue delivering updates until the existing grant expires. A cancellation is not revived by a reconnect or an in-flight renewal. Deleting a channel with no subscription returns a validation error.
+
+<Note>
+Subscriptions are held in memory and do not survive a server restart. Re-create them after restarting GOWA. Subscription state belongs to the selected device.
+</Note>
+
+## Download channel media
+
+```bash
+curl --user "$GOWA_USER:$GOWA_PASSWORD" --get \
+  -H "X-Device-Id: $DEVICE_ID" \
+  --data-urlencode 'newsletter_id=120363024512399999@newsletter' \
+  "$GOWA_URL/newsletter/messages/123/download"
+```
+
+The endpoint fetches that post directly from WhatsApp and saves supported media to the server's media directory. Its JSON `results` contains `server_id`, `message_id`, `status`, `media_type`, `mime_type`, `filename`, `file_path`, `file_url`, and `file_size`. The REST handler supplies `file_url` as a public static URL for the saved file. This is not a binary file response. A missing post or a post without downloadable media returns an error.

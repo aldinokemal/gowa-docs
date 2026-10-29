@@ -44,13 +44,17 @@ curl -u admin:changeme http://localhost:3000/devices/my-device/status
 | `DB_KEYS_URI` | empty (uses `DB_URI`) | Optional separate database for the encryption key cache. Avoid in-memory storage in production; a restart would lose session state. |
 | (fixed) | `file:storages/chatstorage.db` | Device registry, chat and message history, scheduled sends, Chatwoot links. |
 
-Anyone with these files can act as the linked accounts. Restrict file permissions and encrypt backups.
+Anyone with these files can act as the linked accounts. GOWA creates local storage directories with mode `0700` and protects local session database files and SQLite sidecars with mode `0600`. Keep backups encrypted and preserve those permissions when restoring. Do not place session storage under the public `statics/` directory.
 
 ### Back up and restore
 
 Stop GOWA (or snapshot the volume), then copy `storages/`. With PostgreSQL for `DB_URI`, back up that database **and** `storages/chatstorage.db` together. Restoring both brings every slot back without pairing again.
 
 Do not run two GOWA instances against the same session data. WhatsApp sees two clients with one identity and disconnects one of them.
+
+A slot keeps its per-device webhook URL, signing key, and event filters when you log out and pair again. Deleting the slot removes its configuration. Subscribe to `device.logged_out`, `device.temporary_ban`, and `device.reachout_timelock` to distinguish account restrictions from a network disconnect. See [Webhooks](/concepts/webhooks).
+
+For managed PostgreSQL sessions, see the [Neon setup guide](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/neon.md). Changing `DB_URI` does not migrate existing sessions. The registry and chat history remain in local SQLite, so persist `storages/` too.
 
 ## Presence
 

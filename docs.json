@@ -38,7 +38,9 @@
               "examples/receiving-messages",
               "examples/media-handling",
               "examples/group-management",
-              "examples/scheduled-sends"
+              "examples/scheduled-sends",
+              "examples/interactive-messages",
+              "examples/newsletters"
             ]
           },
           {
@@ -71,7 +73,8 @@
               "api-reference/introduction",
               "api-reference/authentication",
               "api-reference/rate-limits",
-              "api-reference/errors"
+              "api-reference/errors",
+              "api-reference/metrics"
             ]
           },
           {

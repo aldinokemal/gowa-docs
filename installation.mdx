@@ -1,5 +1,6 @@
 ---
 title: "Installation"
+keywords: ["installation", "Docker Compose", "reverse proxy", "PostgreSQL"]
 description: "Install GOWA with Docker, Docker Compose, a release binary or from source, and run it behind a reverse proxy."
 ---
 
@@ -55,7 +56,7 @@ services:
     environment:
       APP_BASIC_AUTH: admin:changeme
       WHATSAPP_WEBHOOK: https://example.com/wa-hook
-      WHATSAPP_WEBHOOK_SECRET: change-me
+      WHATSAPP_WEBHOOK_SECRET: ${WHATSAPP_WEBHOOK_SECRET}
     volumes:
       - gowa_storages:/app/storages
       - gowa_statics:/app/statics
@@ -64,6 +65,8 @@ volumes:
   gowa_storages:
   gowa_statics:
 ```
+
+Generate a stable webhook key with `openssl rand -hex 32` and set `WHATSAPP_WEBHOOK_SECRET` in your shell or Compose `.env` before starting this example.
 
 The repository's own `docker-compose.yml` builds the image from `docker/golang.Dockerfile` and reads `src/.env`. Use it when you want to build locally: `cp src/.env.example src/.env && docker compose up -d --build`.
 
@@ -75,7 +78,7 @@ Download an archive from [GitHub Releases](https://github.com/aldinokemal/go-wha
 curl -LO https://github.com/aldinokemal/go-whatsapp-web-multidevice/releases/download/v9.7.0/whatsapp_9.7.0_linux_amd64.zip
 unzip whatsapp_9.7.0_linux_amd64.zip
 chmod +x whatsapp
-./whatsapp rest
+./whatsapp rest --basic-auth=admin:replace-with-a-strong-password
 ```
 
 Install the media tools on the host:
@@ -96,7 +99,7 @@ git clone https://github.com/aldinokemal/go-whatsapp-web-multidevice.git
 cd go-whatsapp-web-multidevice/src
 cp .env.example .env    # optional
 go build -o whatsapp
-./whatsapp rest
+./whatsapp rest --basic-auth=admin:replace-with-a-strong-password
 ```
 
 On macOS also `export CGO_CFLAGS_ALLOW="-Xpreprocessor"` before building.
@@ -123,14 +126,17 @@ By default everything is SQLite under `storages/`:
 | Chat history, device registry, schedules | `file:storages/chatstorage.db` | not configurable |
 | MCP OAuth clients and tokens | `file:storages/oauth.db` | `MCP_OAUTH_DB_URI` |
 
-`DB_URI` also accepts PostgreSQL, for example `postgres://user:pass@host:5432/gowa?sslmode=disable`. Back up `storages/` (or the PostgreSQL database plus `storages/`) to keep paired devices across rebuilds.
+`DB_URI` also accepts PostgreSQL, for example `postgres://user:pass@host:5432/gowa?sslmode=verify-full`. Remote PostgreSQL session stores default to certificate verification when no effective TLS mode is set. Explicit URI, environment, or PostgreSQL service TLS settings still apply. See [storage configuration](/configuration#storage).
+
+GOWA creates SQLite files with owner-only `0600` permissions and new parent directories with `0700`. Existing directories keep their permissions. Back up `storages/` (or PostgreSQL plus `storages/`) to keep paired devices across rebuilds. Treat these backups as credentials.
 
 ## Behind a reverse proxy
 
 Serve GOWA under a subpath with `APP_BASE_PATH`, and trust the proxy's forwarded headers with `APP_TRUSTED_PROXIES`:
 
 ```bash
-./whatsapp rest --base-path=/gowa --trusted-proxies=10.0.0.0/8
+./whatsapp rest --basic-auth=admin:replace-with-a-strong-password \
+  --base-path=/gowa --trusted-proxies=10.0.0.0/8
 ```
 
 ```nginx
@@ -147,6 +153,10 @@ location /gowa/ {
 ```
 
 `/health` stays at the root (`/health`, not `/gowa/health`) so probes work regardless of base path.
+
+The browser origin guard needs the public host. Preserve `Host` as above, or send `X-Forwarded-Host` from a trusted proxy. A separately hosted dashboard needs its exact origin in `APP_TRUSTED_ORIGINS` or `APP_CORS_ALLOWED_ORIGINS`. A wildcard does not authorize mutations or WebSockets. Serve the dashboard over HTTP or HTTPS, because `file://` pages have an untrusted `null` origin.
+
+The default listener refuses to start without complete Basic Auth credentials. Only enable `APP_ALLOW_UNAUTHENTICATED=true` when the proxy authenticates callers and clients cannot bypass it. For local development without authentication, bind `APP_HOST=127.0.0.1`.
 
 ## Verify
 

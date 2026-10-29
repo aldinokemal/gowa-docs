@@ -12,7 +12,7 @@ description: "Self-hosted WhatsApp Web multi-device API in Go: a REST API, webho
   src="/images/GOWA-WhatsApp-Multi-Device-Integration-Overview.png"
 />
 
-GOWA ([go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)) is a self-hosted server that links to WhatsApp as a companion device, the same way WhatsApp Web does, and exposes it over HTTP. It is a single Go binary (`whatsapp rest`) built on [whatsmeow](https://github.com/tulir/whatsmeow). These docs track **v9.7.0**.
+GOWA ([go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-web-multidevice)) is a self-hosted server that links to WhatsApp as a companion device, the same way WhatsApp Web does, and exposes it over HTTP. It is a single Go binary (`whatsapp rest`) built on [whatsmeow](https://github.com/tulir/whatsmeow). These docs track the repository's `main` branch, including merged changes after **v9.7.0**. A release binary or pinned Docker tag can lack newer endpoints and security defaults. Check `GET /app/info` and the release notes before using an example.
 
 <Warning>
   GOWA is an unofficial client. It is not affiliated with WhatsApp or Meta, and using it can get a number restricted or banned. Do not use it for spam or bulk unsolicited messaging.
@@ -31,7 +31,7 @@ GOWA ([go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-w
     Signed HTTP callbacks for messages, receipts, reactions, group, call and newsletter events.
   </Card>
   <Card title="Scheduled sends" icon="clock" href="/examples/scheduled-sends">
-    Send any message later, once or on a daily, weekly or monthly repeat.
+    Schedule supported send types once or on a daily, weekly or monthly repeat.
   </Card>
   <Card title="MCP server" icon="robot" href="/integrations/mcp">
     Streamable-HTTP MCP endpoint at `/mcp` so AI agents can send and read messages.
@@ -42,6 +42,8 @@ GOWA ([go-whatsapp-web-multidevice](https://github.com/aldinokemal/go-whatsapp-w
 </CardGroup>
 
 A web dashboard ([gowa-ui](https://github.com/aldinokemal/gowa-ui)) is served at `/` for pairing devices and trying the API by hand.
+
+See [interactive messages](/examples/interactive-messages) for experimental buttons and carousels, [newsletters](/examples/newsletters) for channel subscriptions, and [server metrics](/api-reference/metrics) for monitoring.
 
 ## Get started
 

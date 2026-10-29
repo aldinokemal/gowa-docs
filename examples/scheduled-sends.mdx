@@ -9,7 +9,7 @@ icon: "clock"
 
 Any send request can be scheduled instead of sent immediately. Add `scheduled_at` and `timezone`; GOWA stores the request and a background worker sends it at that time. Schedules survive restarts and wait for an offline device.
 
-Schedulable message types: text, image, file, video, audio, sticker, contact, link, location, poll and forward (`/message/{id}/forward`). Presence and typing indicators are not schedulable.
+Schedulable message types: text, image, file, video, audio, sticker, contact, link, location, poll and forward (`/message/{id}/forward`). Presence, typing indicators, and the experimental `/send/interactive` endpoint are not schedulable.
 
 ## Schedule fields
 
@@ -120,7 +120,8 @@ The list returns `results.data` and `results.pagination` (`limit`, default 25; `
 - **Send errors:** retried with backoff starting at 15 seconds and capped at 5 minutes, up to 10 attempts per occurrence. A recurring schedule then skips to its next occurrence; a one-off schedule becomes `failed`.
 - **Invalid request** (for example a bad recipient): fails immediately without retrying.
 - **Late runs:** an occurrence delayed past `end_at` is not sent.
-- **Crashes and restarts:** shutdown does not abort a send already in flight. If the process dies mid-send, GOWA cannot know whether the message went out, so once the 2-minute claim expires that occurrence is skipped as interrupted and **not resent**. Recurring schedules continue with their next occurrence.
+- **Crashes and restarts:** shutdown does not abort a send already in flight. Before the first attempt, GOWA persists a WhatsApp message ID for the occurrence. After its 2-minute claim expires, an interrupted occurrence is requeued with that same ID and counts toward the attempt budget. Polls also retain their encryption secret across retries. This preserves message identity after an ambiguous acknowledgment, but does not guarantee exactly-once delivery.
+- **Older interrupted attempts:** legacy attempts whose outcome is unknown retain conservative recovery. The worker skips that occurrence for a recurring schedule or fails a one-off schedule rather than assigning it a new message identity.
 
 ## Over MCP
 

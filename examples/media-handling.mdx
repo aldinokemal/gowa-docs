@@ -30,7 +30,7 @@ curl -u admin:changeme -X POST http://localhost:3000/send/image \
   -F phone=628123456789 -F image_url=https://example.com/photo.jpg
 ```
 
-Send one or the other, not both. A URL must be reachable from the GOWA server.
+Send one or the other, not both. Remote media URLs must use HTTP or HTTPS and resolve to public addresses. GOWA blocks loopback, private, link-local, and other reserved destinations, including redirect targets. Upload local files as multipart data instead of using an internal URL.
 
 ## Processing
 
@@ -47,12 +47,16 @@ GOWA needs FFmpeg and libwebp on the host (both are in the Docker image).
 
 `/send/file` sends documents without conversion.
 
+Image processing checks header dimensions before decoding. The longest accepted edge is 32,768 pixels. Non-JPEG images have a 40-million-pixel budget. JPEGs have an 80-million-pixel ceiling plus a 320 MiB decode-memory budget, so some large progressive or CMYK JPEGs are rejected below the pixel ceiling. Original image sends can omit thumbnails when decoding exceeds the budget. Interactive carousel images have separate, smaller limits in [Interactive messages](/examples/interactive-messages).
+
 ## Incoming media
 
 With `WHATSAPP_AUTO_DOWNLOAD_MEDIA=true` (default), GOWA downloads media from incoming messages to `statics/media/` and puts the relative path in the webhook payload:
 
 ```json
-"image": "statics/media/1752404751-ad9e37ac-c658-4fe5-8d25-ba4a3f4d58fd.jpeg"
+{
+  "image": "statics/media/1752404751-ad9e37ac-c658-4fe5-8d25-ba4a3f4d58fd.jpeg"
+}
 ```
 
 Fetch it at `http://<host>:3000/statics/media/<file>`. Set `WHATSAPP_IGNORE_STATUS_MEDIA=true` to skip media from status updates.
@@ -66,15 +70,32 @@ curl -u admin:changeme -H "X-Device-Id: my-device" \
 
 WhatsApp keeps media on its servers for a limited time (roughly two weeks). Download what you need promptly.
 
-## Disk usage
+## Storage and cleanup
 
-`statics/media/` grows without limit; GOWA does not prune it. Clean it with a scheduled job, for example:
+Paths are relative to the process directory, normally `src/` from source or `/app` in Docker. Compose mounts the repository's `storages/` and `statics/` directories into `/app`.
+
+| Path | Contents |
+| --- | --- |
+| `statics/media/` | Downloaded webhook media and explicit downloads, including chat/date subdirectories. |
+| `storages/<timestamp>-<uuid>[.<extension>]` | Extra copies saved by the incoming-image handler when automatic downloads are enabled. |
+| `storages/scheduled/` | Attachments retained by scheduled sends. Let the scheduler manage these. |
+| `storages/history-*.json` | History dumps, independent of media downloads. |
+
+There is no age-based media retention setting or cleanup endpoint. An image can have copies in both `storages/` and `statics/media/`. Never remove the whole `storages/` directory to reclaim media space.
+
+Pause GOWA and other writers, back up required files, then preview the files to remove. These GNU find examples run from the deployment directory and select files at least 31 full days old.
 
 ```bash
-find /app/statics/media -type f -mtime +30 -delete
+find ./statics/media -type f -mtime +30 -print
+find ./storages -maxdepth 1 -type f -mtime +30 \
+  -name '[0-9]*-????????-????-????-????-????????????*' -print
 ```
 
-Remember that `/statics` is served without Basic Auth.
+After reviewing every path, replace `-print` with `-delete` in the same commands. Preserve database files, SQLite `-wal` and `-shm` sidecars, scheduled attachments, and custom files. Restart GOWA afterward. Deleted paths and static URLs stop working, and removing media does not prune chat history.
+
+`WHATSAPP_AUTO_DOWNLOAD_MEDIA=false` stops future automatic downloads and extra image copies. It does not remove old files or prevent explicit REST or MCP downloads. See the full [media storage and cleanup guide](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/media-storage.md).
+
+`/statics` remains public. Stored HTML, SVG, scripts, and other documents are served as attachments with `application/octet-stream` and `nosniff`. Supported image bytes under image-preview paths can render inline. These content protections do not restrict who can download a file. Protect sensitive media at the reverse proxy.
 
 ## Troubleshooting
 

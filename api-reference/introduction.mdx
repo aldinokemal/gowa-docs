@@ -22,7 +22,7 @@ Most routes act on one WhatsApp device. Choose it with the `X-Device-Id` header 
 
 | Device-scoped | Not device-scoped |
 | --- | --- |
-| `/app/*` (except `/app/info`), `/send/*`, `/message/*`, `/chat/*`, `/chats`, `/user/*`, `/group/*`, `/newsletter/*`, `/call/*` | `/devices*`, `/app/info`, `/health`, `/mcp`, `/chatwoot/*` |
+| `/app/*` (except `/app/info` and `/app/metrics`), `/send/*`, `/message/*`, `/chat/*`, `/chats`, `/user/*`, `/group/*`, `/newsletter/*`, `/call/*` | `/devices*`, `/app/info`, `/app/metrics`, `/health`, `/mcp`, `/chatwoot/*` |
 
 See [Multi-device](/concepts/multidevice).
 
@@ -31,16 +31,16 @@ See [Multi-device](/concepts/multidevice).
 | Group | Purpose |
 | --- | --- |
 | Devices | Create, list, log in, log out and delete device slots; per-device webhooks and Chatwoot configs. |
-| App | Login (QR, pairing code, passkey), logout, reconnect, status, server info. |
-| Send | Text, media, contact, location, link, poll, presence; scheduling. |
+| App | Login (QR, pairing code, passkey), logout, reconnect, status, server info and process, memory, disk, and device metrics. |
+| Send | Text, media, contact, location, link, poll, presence; scheduling; immediate experimental interactive sends. |
 | Message | React, edit, revoke, delete, read, star, forward, download media. |
 | Chat | List chats and messages; pin, archive, disappearing timer, history request. |
 | User | Profile info, avatar, push name, privacy, contacts, groups, number check. |
 | Group | Create, participants, admins, join requests, settings, invite links. |
-| Newsletter | Followed channels and their messages. |
+| Newsletter | Follow, unfollow, channel info, directory, messages, counters, live updates, and media download. |
 | Call | Reject incoming calls. |
 
-The endpoint pages in this tab are generated from GOWA's OpenAPI specification. The authoritative, up-to-date spec is [`docs/openapi.yaml`](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml) in the repository.
+The endpoint pages in this tab are generated from GOWA's OpenAPI specification. The authoritative contract is [`docs/openapi.yaml`](https://github.com/aldinokemal/go-whatsapp-web-multidevice/blob/main/docs/openapi.yaml) in the server repository. This site uses a synchronized copy in `openapi.yml`, including `/send/interactive`. The [interactive guide](/examples/interactive-messages) records its current limits.
 
 ## Requests
 

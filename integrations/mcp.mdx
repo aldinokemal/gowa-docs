@@ -1,5 +1,6 @@
 ---
 title: "MCP Server"
+keywords: ["MCP", "OAuth", "PKCE", "newsletter"]
 description: "Let AI agents use WhatsApp through GOWA's built-in Model Context Protocol endpoint at /mcp."
 sidebarTitle: "MCP Server"
 icon: "robot"
@@ -39,7 +40,7 @@ The exact config format depends on the client. If a client can only launch stdio
 
 ## Tools
 
-GOWA exposes six tools. Each takes a `type` (send) or `action` (all others) argument that selects the operation.
+GOWA exposes seven tools. Each takes a `type` (send) or `action` (all others) argument that selects the operation.
 
 | Tool | `type` / `action` values |
 |---|---|
@@ -49,6 +50,7 @@ GOWA exposes six tools. Each takes a `type` (send) or `action` (all others) argu
 | `whatsapp_chat` | `list_chats`, `list_contacts`, `get_messages`, `archive` |
 | `whatsapp_group` | `create`, `join_with_link`, `leave`, `info`, `participants`, `add_participants`, `remove_participants`, `promote`, `demote`, `invite_link`, `set_name`, `set_topic`, `set_settings`, `join_requests`, `manage_join_requests` |
 | `whatsapp_app` | `status`, `login_qr`, `login_code`, `logout`, `reconnect` |
+| `whatsapp_newsletter` | `follow`, `unfollow`, `info`, `directory`, `messages`, `message_updates`, `live_updates_subscribe`, `live_updates_unsubscribe`, `live_updates_list` |
 
 Notes on arguments:
 
@@ -58,7 +60,11 @@ Notes on arguments:
 - `whatsapp_chat`: `get_messages` needs `chat_jid`; `archive` needs `chat_jid` and `archived`.
 - `whatsapp_app`: `login_code` needs `phone`.
 
-Your MCP client shows the full input schema of each tool.
+The experimental buttons, location-request, and carousel sends are available through REST only. See [interactive messages](/examples/interactive-messages). Newsletter tools support channel discovery, history counters, and automatically renewed live-update subscriptions. See [newsletters](/examples/newsletters).
+
+Media URL downloads apply the same public-address checks as REST sends and connect directly without `HTTP_PROXY` or `HTTPS_PROXY`. Uploads from local files require the REST API.
+
+Your MCP client shows the full input schema of each tool. The HTTP endpoint accepts POST and DELETE. GET SSE streaming is disabled.
 
 ## Device selection
 
@@ -88,8 +94,12 @@ Requirements and behavior:
 - `APP_BASIC_AUTH` must be set: the authorization page signs users in with those same accounts. Startup fails without it.
 - Issuer and resource must be the **public HTTPS** URLs clients see, not internal addresses like `http://gowa:3000`.
 - With OAuth on, `/mcp` accepts a Bearer token **or** Basic Auth. Tokens are not accepted on REST or UI routes.
-- Clients register themselves (RFC 7591 dynamic client registration). Registrations are limited to 40 per hour and 1,000 stored clients; unused ones are pruned after 24 hours.
+- Clients register themselves (RFC 7591 dynamic client registration). Registration bodies are limited to 16 KiB and each redirect URI to 2 KiB. Registrations are limited to 40 per hour and 1,000 stored clients; unused ones are pruned after 24 hours.
 - PKCE `S256` is mandatory. Codes expire after 5 minutes, access tokens after 1 hour; refresh tokens rotate, and reusing an old one revokes the whole token family. Only SHA-256 hashes of tokens are stored, in `MCP_OAUTH_DB_URI` (default `file:storages/oauth.db`).
+
+Redirect URIs must match registered values exactly. Native clients can use HTTP loopback IP callbacks with a dynamic port. `localhost` callbacks require an explicit port and an exact match. Other redirects require HTTPS. The OAuth `resource` is bound to the canonical MCP URL; token requests can omit it, but a supplied value must match. Successful authorization responses include `iss`.
+
+Expired codes and tokens are pruned during OAuth writes. Rotated refresh-token hashes remain while needed to detect replay against a live family, for at most one further refresh-token lifetime of 30 days. Deleting or replacing the OAuth database invalidates existing clients and grants.
 
 Endpoints, relative to the issuer: `/oauth/authorize`, `/oauth/token`, `/oauth/register`. Discovery metadata uses path-insertion well-known URLs at the domain root, so with `APP_BASE_PATH=/gowa` your proxy must route:
 

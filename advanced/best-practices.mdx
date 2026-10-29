@@ -6,12 +6,12 @@ description: "Run GOWA safely in production: security, storage, backups, reverse
 
 ## Security
 
-- **Set `APP_BASIC_AUTH`** with a long random password. Without it, anyone who can reach the port controls your WhatsApp account.
-- **Change `WHATSAPP_WEBHOOK_SECRET`.** The default is `secret`. Verify `X-Hub-Signature-256` on every webhook.
+- **Set `APP_BASIC_AUTH`** with a long random password. A non-loopback bind requires credentials unless `APP_ALLOW_UNAUTHENTICATED=true` explicitly disables that check. Loopback can run without credentials for local development.
+- **Set `WHATSAPP_WEBHOOK_SECRET` explicitly.** Without it, GOWA generates a random key that changes on restart. Verify `X-Hub-Signature-256` over the raw request body. Keep outbound webhook TLS verification enabled.
 - **Terminate TLS** at a reverse proxy; GOWA itself speaks plain HTTP.
 - **Restrict `/statics`.** QR codes and downloaded media under `/statics/*` are served **without** Basic Auth. Block or protect that path at the proxy if media is sensitive, and prune `statics/media` regularly.
 - **Do not expose `/chatwoot/webhook` without `CHATWOOT_WEBHOOK_SECRET`** when Chatwoot is enabled.
-- **Set `APP_CORS_ALLOWED_ORIGINS`** if browsers call the API directly; empty allows any origin.
+- **Set `APP_CORS_ALLOWED_ORIGINS`** if browsers call the API directly; wildcard CORS does not authorize browser writes or `/ws`. Configure specific origins in `APP_TRUSTED_ORIGINS` or the CORS allowlist. See [Authentication](/api-reference/authentication).
 - **Bind privately** (`APP_HOST=127.0.0.1` or a private network) when only local services need access.
 - Rate-limit failed logins at the proxy; GOWA has no built-in [rate limiting](/advanced/rate-limiting).
 
@@ -65,10 +65,12 @@ See [Installation](/installation#behind-a-reverse-proxy) for an nginx example.
 
 GOWA reconnects automatically on startup and checks connections every 5 minutes. A device logged out from the phone must be paired again.
 
+`GET /app/metrics` returns authenticated process, memory, disk, and device metrics without selecting a device. See [Server metrics](/api-reference/metrics). Alert on `device.logged_out`, `device.temporary_ban`, and `device.reachout_timelock` webhooks.
+
 ## Webhook receivers
 
 - Respond `2xx` within 10 seconds; process work asynchronously.
-- Deduplicate by message `id`: retries can deliver an event more than once.
+- Deduplicate by device, event type, and the event's identifiers. Message IDs alone do not distinguish edits, reactions, or later receipt states.
 - After 5 failed attempts the event is dropped. Use `GET /chats` and `GET /chat/{jid}/messages` to catch up after an outage.
 
 ## Sending hygiene
